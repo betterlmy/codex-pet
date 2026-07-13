@@ -1,0 +1,13 @@
+{
+  "name": "codex-pet-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix apps/desktop run build",
+    "desktop": "npm --prefix apps/desktop run start",
+    "desktop:dev": "npm --prefix apps/desktop run dev",
+    "check": "npm --prefix apps/desktop run check",
+    "install:desktop": "npm --prefix apps/desktop install && npm --prefix apps/desktop run electron:install",
+    "package:win": "npm --prefix apps/desktop run package:win"
+  }
+}

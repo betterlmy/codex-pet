@@ -1,0 +1,275 @@
+use std::io::BufRead as _;
+use std::io::Write as _;
+use std::path::PathBuf;
+use std::sync::mpsc;
+use std::time::Duration;
+
+use anyhow::Context;
+use anyhow::Result;
+use pet_assets::AssetStore;
+use pet_assets::PetSummary;
+use pet_core::BehaviorController;
+use pet_core::BehaviorMode;
+use pet_core::BehaviorState;
+use pet_core::Pet;
+use pet_core::RuntimeConfig;
+use pet_core::app_home;
+use serde::Deserialize;
+use serde::Serialize;
+
+#[derive(Debug, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+enum ClientCommand {
+    Hello,
+    SelectPet { pet_id: String },
+    SetBehaviorMode { mode: BehaviorMode },
+    SetState { state: BehaviorState },
+    SetPaused { paused: bool },
+    Advance,
+    Shutdown,
+}
+
+#[derive(Debug)]
+enum InputMessage {
+    Command(ClientCommand),
+    Invalid(String),
+    Closed,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+enum ServerEvent<'a> {
+    Ready {
+        home: &'a std::path::Path,
+        catalog: &'a [PetSummary],
+        snapshot: Option<RuntimeSnapshot<'a>>,
+    },
+    Snapshot {
+        snapshot: RuntimeSnapshot<'a>,
+    },
+    Error {
+        message: String,
+    },
+    Bye,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeSnapshot<'a> {
+    revision: u64,
+    pet: &'a Pet,
+    behavior_mode: BehaviorMode,
+    state: BehaviorState,
+    state_label: &'static str,
+    animation: &'static str,
+    paused: bool,
+}
+
+struct Runtime {
+    home: PathBuf,
+    store: AssetStore,
+    config: RuntimeConfig,
+    behavior: BehaviorController,
+    pet: Option<Pet>,
+    catalog: Vec<PetSummary>,
+    revision: u64,
+}
+
+impl Runtime {
+    fn load() -> Result<Self> {
+        let home = app_home()?;
+        let store = AssetStore::new(home.clone());
+        let config = RuntimeConfig::load(&home)?;
+        let behavior = BehaviorController::new(config.behavior_mode, config.paused);
+        let catalog = store.available_pets();
+        let pet = store.load_pet(&config.selected_pet).ok();
+        Ok(Self {
+            home,
+            store,
+            config,
+            behavior,
+            pet,
+            catalog,
+            revision: 1,
+        })
+    }
+
+    fn ready(&self) -> ServerEvent<'_> {
+        ServerEvent::Ready {
+            home: &self.home,
+            catalog: &self.catalog,
+            snapshot: self.snapshot(),
+        }
+    }
+
+    fn snapshot_event(&self) -> Option<ServerEvent<'_>> {
+        self.snapshot()
+            .map(|snapshot| ServerEvent::Snapshot { snapshot })
+    }
+
+    fn snapshot(&self) -> Option<RuntimeSnapshot<'_>> {
+        Some(RuntimeSnapshot {
+            revision: self.revision,
+            pet: self.pet.as_ref()?,
+            behavior_mode: self.behavior.mode(),
+            state: self.behavior.state(),
+            state_label: self.behavior.state().label(),
+            animation: self.behavior.state().animation_name(),
+            paused: self.behavior.paused(),
+        })
+    }
+
+    fn handle(&mut self, command: ClientCommand) -> Result<HandleResult> {
+        match command {
+            ClientCommand::Hello => Ok(HandleResult::Ready),
+            ClientCommand::SelectPet { pet_id } => {
+                let pet = self.store.load_pet(&pet_id)?;
+                self.pet = Some(pet);
+                self.config.selected_pet = pet_id;
+                self.persist()?;
+                self.bump();
+                Ok(HandleResult::Snapshot)
+            }
+            ClientCommand::SetBehaviorMode { mode } => {
+                self.behavior.set_mode(mode);
+                self.config.behavior_mode = mode;
+                self.persist()?;
+                self.bump();
+                Ok(HandleResult::Snapshot)
+            }
+            ClientCommand::SetState { state } => {
+                self.behavior.set_state(state);
+                self.config.behavior_mode = BehaviorMode::Manual;
+                self.persist()?;
+                self.bump();
+                Ok(HandleResult::Snapshot)
+            }
+            ClientCommand::SetPaused { paused } => {
+                self.behavior.set_paused(paused);
+                self.config.paused = paused;
+                self.persist()?;
+                self.bump();
+                Ok(HandleResult::Snapshot)
+            }
+            ClientCommand::Advance => {
+                self.behavior.advance();
+                self.config.behavior_mode = BehaviorMode::Automatic;
+                self.persist()?;
+                self.bump();
+                Ok(HandleResult::Snapshot)
+            }
+            ClientCommand::Shutdown => Ok(HandleResult::Shutdown),
+        }
+    }
+
+    fn tick(&mut self) -> bool {
+        if self.behavior.advance_if_due() {
+            self.bump();
+            return true;
+        }
+        false
+    }
+
+    fn bump(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
+    }
+
+    fn persist(&self) -> Result<()> {
+        self.config.save(&self.home)
+    }
+}
+
+enum HandleResult {
+    Ready,
+    Snapshot,
+    Shutdown,
+}
+
+fn main() {
+    if let Err(error) = run() {
+        let _ = emit(&ServerEvent::Error {
+            message: format!("{error:#}"),
+        });
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
+    let mut runtime = Runtime::load()?;
+    emit(&runtime.ready())?;
+    if runtime.pet.is_none() {
+        emit(&ServerEvent::Error {
+            message: format!(
+                "无法加载默认宠物 {}。请检查网络或 CODEX_PET_HOME。",
+                runtime.config.selected_pet
+            ),
+        })?;
+    }
+
+    let receiver = spawn_input_reader();
+    loop {
+        match receiver.recv_timeout(Duration::from_millis(100)) {
+            Ok(InputMessage::Command(command)) => match runtime.handle(command) {
+                Ok(HandleResult::Ready) => emit(&runtime.ready())?,
+                Ok(HandleResult::Snapshot) => {
+                    if let Some(event) = runtime.snapshot_event() {
+                        emit(&event)?;
+                    }
+                }
+                Ok(HandleResult::Shutdown) => break,
+                Err(error) => emit(&ServerEvent::Error {
+                    message: format!("{error:#}"),
+                })?,
+            },
+            Ok(InputMessage::Invalid(message)) => emit(&ServerEvent::Error { message })?,
+            Ok(InputMessage::Closed) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if runtime.tick()
+                    && let Some(event) = runtime.snapshot_event()
+                {
+                    emit(&event)?;
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    emit(&ServerEvent::Bye)
+}
+
+fn spawn_input_reader() -> mpsc::Receiver<InputMessage> {
+    let (sender, receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        let stdin = std::io::stdin();
+        for line in stdin.lock().lines() {
+            let message = match line {
+                Ok(line) => match serde_json::from_str(&line) {
+                    Ok(command) => InputMessage::Command(command),
+                    Err(error) => InputMessage::Invalid(format!("无效 IPC 命令：{error}")),
+                },
+                Err(error) => InputMessage::Invalid(format!("读取 IPC 命令失败：{error}")),
+            };
+            if sender.send(message).is_err() {
+                return;
+            }
+        }
+        let _ = sender.send(InputMessage::Closed);
+    });
+    receiver
+}
+
+fn emit(event: &ServerEvent<'_>) -> Result<()> {
+    let stdout = std::io::stdout();
+    let mut writer = stdout.lock();
+    serde_json::to_writer(&mut writer, event).context("序列化 IPC 事件")?;
+    writer.write_all(b"\n")?;
+    writer.flush()?;
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "main_tests.rs"]
+mod tests;

@@ -1,0 +1,38 @@
+[workspace]
+members = [
+    "apps/cli",
+    "crates/pet-assets",
+    "crates/pet-core",
+    "crates/pet-runtime",
+    "crates/pet-terminal",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[workspace.dependencies]
+anyhow = "1"
+base64 = "0.22.1"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28.1"
+image = { version = "0.25.9", default-features = false, features = ["png", "webp"] }
+pretty_assertions = "1.4.1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3.23.0"
+thiserror = "2.0.17"
+
+pet-assets = { path = "crates/pet-assets" }
+pet-core = { path = "crates/pet-core" }
+pet-terminal = { path = "crates/pet-terminal" }

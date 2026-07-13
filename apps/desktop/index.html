@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' file: data:; style-src 'self'; script-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>codex-pet</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="pet-stage" aria-label="桌面宠物，可拖动窗口">
+      <div class="atmosphere" aria-hidden="true"></div>
+      <div id="sprite" class="sprite is-missing" role="img" aria-label="当前宠物"></div>
+      <div class="floor" aria-hidden="true"><span></span></div>
+
+      <section class="identity" aria-live="polite">
+        <span class="signal" aria-hidden="true"></span>
+        <span id="pet-name" class="pet-name">PET/00</span>
+        <span class="divider" aria-hidden="true"></span>
+        <span id="state-label" class="state-label">启动中</span>
+      </section>
+
+      <nav class="control-rail" aria-label="宠物控制">
+        <button id="mode-button" type="button" title="切换自动行为">AUTO</button>
+        <button id="pause-button" type="button" title="暂停或继续动画">PAUSE</button>
+        <button id="next-button" type="button" title="切换下一个行为">NEXT</button>
+        <button id="pass-button" type="button" title="启用点击穿透，之后可从托盘关闭">PASS</button>
+        <button id="hide-button" type="button" title="隐藏到托盘">HIDE</button>
+      </nav>
+
+      <div id="error-panel" class="error-panel" role="alert" hidden></div>
+    </main>
+    <script src="dist/renderer.js"></script>
+  </body>
+</html>
+

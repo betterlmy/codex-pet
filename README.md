@@ -1,0 +1,93 @@
+# codex-pet
+
+从 Codex 终端宠物中提取的独立桌宠原型，同时提供 Electron 桌面悬浮窗和
+Kitty/Sixel 终端前端。项目不连接 Codex，也不读取 Codex 会话状态。
+
+## 架构
+
+- `pet-core`：宠物清单、默认动画和自动行为状态机。
+- `pet-assets`：内置资源下载、校验、缓存和精灵帧切割。
+- `pet-terminal`：Kitty、iTerm2 Kitty 文件模式和 Sixel 渲染。
+- `pet-runtime`：供 Electron 启动的 JSONL stdio sidecar。
+- `apps/desktop`：透明置顶窗口、托盘菜单和窗口设置。
+- `apps/cli`：终端入口和资源管理命令。
+
+## Windows 本地开发
+
+在 PowerShell 中执行：
+
+```powershell
+cargo build --workspace
+npm run install:desktop
+npm run build
+$env:CODEX_PET_RUNTIME = (Resolve-Path ".\target\debug\codex-pet-runtime.exe")
+npm run desktop
+```
+
+开发环境需要 Rust stable 和 Node.js 22 或更高版本。Electron 42 的 npm 包需要显式
+下载平台运行时，因此不要用普通的 `npm install --prefix apps/desktop` 替代
+`npm run install:desktop`。
+
+## GitHub Actions 便携版
+
+推送到 `main` 分支时，`.github/workflows/windows-portable.yml` 会在 GitHub 的
+`windows-latest` x64 构建机上运行测试、编译 Rust sidecar，并生成：
+
+```text
+codex-pet-portable-x64-<版本>.exe
+```
+
+构建完成后，在对应 Actions 运行页面的 Artifacts 区域直接下载生成的 EXE。产物保留
+30 天。当前便携版不带代码签名，Windows 可能显示“未知发布者”或 SmartScreen 提示。
+
+如果需要在 Windows 本机复现 GitHub Actions 的打包过程：
+
+```powershell
+cargo build --release --locked -p pet-runtime
+npm ci --prefix apps/desktop
+npm run electron:install --prefix apps/desktop
+npm run package:win
+```
+
+生成的 EXE 位于 `artifacts/`。
+
+## Linux/WSL2 本地开发
+
+```bash
+cargo build --workspace
+npm run install:desktop
+npm run build
+CODEX_PET_RUNTIME="$PWD/target/debug/codex-pet-runtime" npm run desktop
+```
+
+在 WSL2 内启动上面的命令时，桌面端由 WSLg 显示。若要从 WSL2 交叉构建 Windows
+可执行文件，可执行：
+
+```bash
+rustup target add x86_64-pc-windows-gnu
+cargo build --release --target x86_64-pc-windows-gnu \
+  -p codex-pet -p pet-runtime
+```
+
+交叉构建需要 `gcc-mingw-w64-x86-64`。若项目直接位于 Windows 文件系统中，优先使用
+前面的 PowerShell 流程启动 Windows Electron；Electron 不支持直接把 WSL 的 UNC 目录
+作为应用入口。
+
+## 终端前端
+
+```bash
+cargo run -p codex-pet -- terminal --pet codex --protocol auto
+```
+
+首次使用内置宠物时会从 Codex CDN 下载 spritesheet。可通过
+`CODEX_PET_HOME` 覆盖数据目录；自定义宠物放在
+`$CODEX_PET_HOME/pets/<pet-id>/pet.json`。
+
+## 快捷操作
+
+- 桌面端：悬停显示控制条；托盘菜单可选择宠物、切换自动行为、暂停和点击穿透。
+- 终端端：`q`/`Esc` 退出，空格暂停，`n` 立即切换行为，`a` 切换自动行为。
+
+## 资源声明
+
+当前官方 CDN 资源只用于本地原型。公开分发前请阅读 `NOTICE.md` 并替换资源或取得许可。

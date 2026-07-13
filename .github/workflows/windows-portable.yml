@@ -1,0 +1,68 @@
+name: 构建 Windows 便携版
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-portable-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+jobs:
+  build-windows:
+    name: Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          architecture: x64
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: 配置 Rust stable
+        shell: pwsh
+        run: |
+          rustup update stable
+          rustup default stable
+          rustc --version
+
+      - name: 安装 Electron 依赖
+        shell: pwsh
+        run: |
+          npm ci --prefix apps/desktop
+          npm run electron:install --prefix apps/desktop
+
+      - name: 检查项目
+        shell: pwsh
+        run: |
+          cargo test --workspace --locked
+          npm run check
+
+      - name: 编译 Rust sidecar
+        run: cargo build --release --locked -p pet-runtime
+
+      - name: 打包便携版 EXE
+        run: npm run package:win
+
+      - name: 上传便携版
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/codex-pet-portable-x64-*.exe
+          if-no-files-found: error
+          retention-days: 30
+          archive: false

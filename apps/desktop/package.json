@@ -1,0 +1,23 @@
+{
+  "name": "codex-pet-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Independent Codex-style desktop pet prototype",
+  "author": "codex-pet contributors",
+  "license": "Apache-2.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "electron:install": "node node_modules/electron/install.js",
+    "package:win": "npm run build && electron-builder --win portable --x64",
+    "start": "npm run build && electron .",
+    "dev": "npm run start"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "electron": "^42.0.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.9.3"
+  }
+}

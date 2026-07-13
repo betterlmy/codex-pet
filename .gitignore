@@ -1,0 +1,9 @@
+/target/
+/artifacts/
+/node_modules/
+/dist/
+/apps/desktop/dist/
+/apps/desktop/node_modules/
+/.codegraph/
+*.log
+*.snap.new
