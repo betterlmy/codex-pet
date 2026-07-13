@@ -8,6 +8,32 @@ use pet_core::Animation;
 use super::*;
 
 #[test]
+fn proxy_configuration_accepts_supported_protocols_and_alias() {
+    let directory = tempfile::tempdir().unwrap();
+    for proxy_url in [
+        "http://127.0.0.1:7890",
+        "https://user:secret@proxy.example:8443",
+        "socks4://127.0.0.1:1080",
+        "socks5://user:secret@127.0.0.1:1080",
+        "socks://127.0.0.1:1080",
+    ] {
+        AssetStore::with_proxy(directory.path().to_path_buf(), Some(proxy_url.to_string()))
+            .unwrap();
+    }
+}
+
+#[test]
+fn proxy_configuration_rejects_unsupported_protocol() {
+    let directory = tempfile::tempdir().unwrap();
+    let error = AssetStore::with_proxy(
+        directory.path().to_path_buf(),
+        Some("ftp://proxy.example:21".to_string()),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("代理协议"));
+}
+
+#[test]
 fn frame_cache_slices_custom_spritesheet() {
     let dir = tempfile::tempdir().unwrap();
     let sheet_path = dir.path().join("sheet.png");

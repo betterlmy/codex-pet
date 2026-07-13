@@ -12,6 +12,10 @@ files:
   - assets/**/*
   - index.html
   - styles.css
+  - bubble.html
+  - bubble.css
+  - settings.html
+  - settings.css
   - package.json
 
 extraResources:
@@ -31,4 +35,3 @@ win:
     - target: portable
       arch:
         - x64
-

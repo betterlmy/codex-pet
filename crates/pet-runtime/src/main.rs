@@ -17,6 +17,8 @@ use pet_core::app_home;
 use serde::Deserialize;
 use serde::Serialize;
 
+mod selection;
+
 #[derive(Debug, Deserialize)]
 #[serde(
     tag = "type",
@@ -30,6 +32,8 @@ enum ClientCommand {
     SetState { state: BehaviorState },
     SetPaused { paused: bool },
     Advance,
+    CaptureSelection { request_id: u64 },
+    SetProxy { proxy_url: Option<String> },
     Shutdown,
 }
 
@@ -52,6 +56,15 @@ enum ServerEvent<'a> {
         snapshot: RuntimeSnapshot<'a>,
     },
     Error {
+        message: String,
+    },
+    SelectionCaptured {
+        request_id: u64,
+        text: &'a str,
+        method: &'static str,
+    },
+    SelectionFailed {
+        request_id: u64,
         message: String,
     },
     Bye,
@@ -82,7 +95,8 @@ struct Runtime {
 impl Runtime {
     fn load() -> Result<Self> {
         let home = app_home()?;
-        let store = AssetStore::new(home.clone());
+        let proxy_url = std::env::var("CODEX_PET_PROXY_URL").ok();
+        let store = AssetStore::with_proxy(home.clone(), proxy_url)?;
         let config = RuntimeConfig::load(&home)?;
         let behavior = BehaviorController::new(config.behavior_mode, config.paused);
         let catalog = store.available_pets();
@@ -162,6 +176,20 @@ impl Runtime {
                 self.bump();
                 Ok(HandleResult::Snapshot)
             }
+            ClientCommand::CaptureSelection { request_id } => match selection::capture() {
+                Ok(capture) => Ok(HandleResult::SelectionCaptured {
+                    request_id,
+                    capture,
+                }),
+                Err(error) => Ok(HandleResult::SelectionFailed {
+                    request_id,
+                    message: format!("{error:#}"),
+                }),
+            },
+            ClientCommand::SetProxy { proxy_url } => {
+                self.store.set_proxy_url(proxy_url)?;
+                Ok(HandleResult::None)
+            }
             ClientCommand::Shutdown => Ok(HandleResult::Shutdown),
         }
     }
@@ -184,8 +212,17 @@ impl Runtime {
 }
 
 enum HandleResult {
+    None,
     Ready,
     Snapshot,
+    SelectionCaptured {
+        request_id: u64,
+        capture: selection::SelectionCapture,
+    },
+    SelectionFailed {
+        request_id: u64,
+        message: String,
+    },
     Shutdown,
 }
 
@@ -214,12 +251,28 @@ fn run() -> Result<()> {
     loop {
         match receiver.recv_timeout(Duration::from_millis(100)) {
             Ok(InputMessage::Command(command)) => match runtime.handle(command) {
+                Ok(HandleResult::None) => {}
                 Ok(HandleResult::Ready) => emit(&runtime.ready())?,
                 Ok(HandleResult::Snapshot) => {
                     if let Some(event) = runtime.snapshot_event() {
                         emit(&event)?;
                     }
                 }
+                Ok(HandleResult::SelectionCaptured {
+                    request_id,
+                    capture,
+                }) => emit(&ServerEvent::SelectionCaptured {
+                    request_id,
+                    text: &capture.text,
+                    method: capture.method,
+                })?,
+                Ok(HandleResult::SelectionFailed {
+                    request_id,
+                    message,
+                }) => emit(&ServerEvent::SelectionFailed {
+                    request_id,
+                    message,
+                })?,
                 Ok(HandleResult::Shutdown) => break,
                 Err(error) => emit(&ServerEvent::Error {
                     message: format!("{error:#}"),

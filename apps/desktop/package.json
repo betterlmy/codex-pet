@@ -9,10 +9,14 @@
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
+    "test": "npm run build && node --test dist/*_tests.js",
     "electron:install": "node node_modules/electron/install.js",
     "package:win": "npm run build && electron-builder --win portable --x64",
     "start": "npm run build && electron .",
     "dev": "npm run start"
+  },
+  "dependencies": {
+    "proxy-agent": "^6.5.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

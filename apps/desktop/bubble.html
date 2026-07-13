@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self'; script-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>codex-pet 气泡</title>
+    <link rel="stylesheet" href="bubble.css" />
+  </head>
+  <body>
+    <main id="bubble" class="bubble" data-state="capturing" aria-label="AI 助手结果气泡">
+      <div class="scanlines" aria-hidden="true"></div>
+      <header class="bubble-header">
+        <span class="signal" aria-hidden="true"></span>
+        <div class="title-group">
+          <span class="eyebrow">PET SIGNAL</span>
+          <strong id="action-name">正在读取选区</strong>
+        </div>
+        <button id="close-button" class="icon-button" type="button" aria-label="关闭气泡">×</button>
+      </header>
+
+      <section class="message-frame">
+        <div id="status" class="status" aria-live="polite">CAPTURING / 获取选中文本</div>
+        <div id="output" class="output" aria-live="polite">正在从当前页面读取选中的文本…</div>
+        <span class="corner corner-a" aria-hidden="true"></span>
+        <span class="corner corner-b" aria-hidden="true"></span>
+      </section>
+
+      <footer class="actions">
+        <span id="method-label" class="method-label">等待信号</span>
+        <div class="action-buttons">
+          <button id="retry-button" type="button" disabled>RETRY</button>
+          <button id="copy-button" type="button" disabled>COPY</button>
+        </div>
+      </footer>
+      <div class="bubble-tail" aria-hidden="true"></div>
+    </main>
+    <script src="dist/bubble.js"></script>
+  </body>
+</html>

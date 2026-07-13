@@ -1,0 +1,279 @@
+:root {
+  color-scheme: dark;
+  --ink: #1b130c;
+  --panel: rgb(40 28 18 / 96%);
+  --panel-soft: rgb(55 38 22 / 92%);
+  --paper: #ead8b4;
+  --paper-deep: #c8aa72;
+  --brass: #d89d38;
+  --signal: #d9ff78;
+  --warning: #ff795e;
+  --line: rgb(246 222 174 / 38%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  padding: 9px 12px 24px;
+  font-family: "Cascadia Code", "IBM Plex Mono", monospace;
+  user-select: text;
+}
+
+.bubble {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(135deg, rgb(75 50 27 / 24%), transparent 34%),
+    linear-gradient(180deg, var(--panel), rgb(25 18 12 / 98%));
+  box-shadow:
+    0 20px 42px rgb(0 0 0 / 42%),
+    inset 0 0 0 1px rgb(216 157 56 / 10%);
+  color: var(--paper);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  animation: signal-in 180ms ease-out both;
+}
+
+.scanlines {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent 0 4px, rgb(255 255 255 / 1.6%) 5px);
+  mix-blend-mode: screen;
+}
+
+.bubble-header,
+.message-frame,
+.actions {
+  position: relative;
+  z-index: 1;
+}
+
+.bubble-header {
+  display: grid;
+  grid-template-columns: 8px 1fr 30px;
+  gap: 10px;
+  align-items: center;
+  min-height: 54px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid rgb(234 216 180 / 14%);
+  -webkit-app-region: drag;
+}
+
+.signal {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 14px var(--signal);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.bubble[data-state="complete"] .signal {
+  animation: none;
+}
+
+.bubble[data-state="error"] .signal {
+  background: var(--warning);
+  box-shadow: 0 0 14px var(--warning);
+  animation: none;
+}
+
+.title-group {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.eyebrow {
+  color: var(--brass);
+  font-size: 8px;
+  letter-spacing: 0.2em;
+}
+
+.title-group strong {
+  overflow: hidden;
+  font-family: "Palatino Linotype", Georgia, serif;
+  font-size: 15px;
+  letter-spacing: 0.05em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgb(234 216 180 / 20%);
+  background: rgb(23 16 11 / 60%);
+  color: var(--paper-deep);
+  font: 20px/1 Georgia, serif;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.message-frame {
+  min-height: 0;
+  margin: 0 11px;
+  padding: 12px 13px;
+  border-inline: 1px solid rgb(216 157 56 / 20%);
+  background:
+    radial-gradient(circle at 100% 0, rgb(217 255 120 / 6%), transparent 34%),
+    rgb(16 12 8 / 56%);
+}
+
+.status {
+  margin-bottom: 9px;
+  color: var(--brass);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.output {
+  height: 146px;
+  overflow: auto;
+  padding-right: 6px;
+  color: #f1dfba;
+  font: 12px/1.72 "Cascadia Code", "IBM Plex Mono", monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  scrollbar-color: var(--brass) transparent;
+  scrollbar-width: thin;
+}
+
+.bubble[data-state="capturing"] .output,
+.bubble[data-state="streaming"] .output:empty::after {
+  color: var(--paper-deep);
+  content: "等待模型返回信号…";
+}
+
+.bubble[data-state="error"] .output {
+  color: #ffc5b9;
+}
+
+.corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: var(--brass);
+  opacity: 0.72;
+}
+
+.corner-a {
+  top: 5px;
+  left: 5px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+
+.corner-b {
+  right: 5px;
+  bottom: 5px;
+  border-right: 1px solid;
+  border-bottom: 1px solid;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 45px;
+  padding: 7px 11px 9px;
+  border-top: 1px solid rgb(234 216 180 / 12%);
+}
+
+.method-label {
+  color: var(--paper-deep);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.action-buttons button {
+  min-width: 56px;
+  min-height: 25px;
+  border: 1px solid rgb(234 216 180 / 27%);
+  background: rgb(31 23 16 / 90%);
+  color: var(--paper-deep);
+  font: 600 8px/1 "Cascadia Code", monospace;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible,
+.action-buttons button:not(:disabled):hover,
+.action-buttons button:not(:disabled):focus-visible {
+  outline: none;
+  border-color: var(--brass);
+  background: rgb(81 55 25 / 96%);
+  color: #ffe6a9;
+}
+
+.action-buttons button:disabled {
+  cursor: default;
+  opacity: 0.34;
+}
+
+.bubble-tail {
+  position: absolute;
+  right: 30px;
+  bottom: -14px;
+  z-index: -1;
+  width: 28px;
+  height: 28px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #1b130c;
+  transform: rotate(45deg);
+}
+
+@keyframes signal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.84);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble,
+  .signal {
+    animation: none;
+  }
+}

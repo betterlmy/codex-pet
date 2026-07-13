@@ -15,7 +15,11 @@ import { createInterface } from "node:readline";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { AssistantController } from "./assistant-controller";
+import { AssistantStore } from "./assistant-store";
+import { ApplicationProxy } from "./application-proxy";
 import type {
+  AssistantSettingsUpdate,
   PetCommand,
   PetSummary,
   RuntimeEvent,
@@ -25,6 +29,8 @@ import type {
 
 const WINDOW_WIDTH = 292;
 const WINDOW_HEIGHT = 344;
+const BUBBLE_WIDTH = 430;
+const BUBBLE_HEIGHT = 318;
 
 interface WindowSettings {
   x?: number;
@@ -33,8 +39,11 @@ interface WindowSettings {
 }
 
 let petWindow: BrowserWindow | null = null;
+let bubbleWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let runtime: ChildProcessWithoutNullStreams | null = null;
+let assistantController: AssistantController | null = null;
 let catalog: PetSummary[] = [];
 let snapshot: RuntimeSnapshot | null = null;
 let lastEvent: RuntimeEvent | null = null;
@@ -125,7 +134,10 @@ function createWindow(): BrowserWindow {
   window.setIgnoreMouseEvents(windowSettings.clickThrough, { forward: true });
   window.loadFile(path.join(__dirname, "..", "index.html"));
   window.once("ready-to-show", () => window.showInactive());
-  window.on("moved", schedulePersistSettings);
+  window.on("moved", () => {
+    schedulePersistSettings();
+    positionBubbleWindow();
+  });
   window.on("show", sendShellState);
   window.on("hide", sendShellState);
   window.on("closed", () => {
@@ -133,6 +145,96 @@ function createWindow(): BrowserWindow {
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   return window;
+}
+
+function createBubbleWindow(): BrowserWindow {
+  const window = new BrowserWindow({
+    width: BUBBLE_WIDTH,
+    height: BUBBLE_HEIGHT,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: false,
+    closable: false,
+    backgroundColor: "#00000000",
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "bubble-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  window.setAlwaysOnTop(true, "floating");
+  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+  window.loadFile(path.join(__dirname, "..", "bubble.html"));
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.on("closed", () => {
+    bubbleWindow = null;
+  });
+  return window;
+}
+
+function showBubbleWindow(): BrowserWindow | null {
+  if (!bubbleWindow || bubbleWindow.isDestroyed()) return null;
+  positionBubbleWindow();
+  if (!bubbleWindow.isVisible()) bubbleWindow.showInactive();
+  return bubbleWindow;
+}
+
+function hideBubbleWindow(): void {
+  bubbleWindow?.hide();
+}
+
+function positionBubbleWindow(): void {
+  if (!petWindow || !bubbleWindow || petWindow.isDestroyed() || bubbleWindow.isDestroyed()) return;
+  const petBounds = petWindow.getBounds();
+  const display = screen.getDisplayMatching(petBounds);
+  const area = display.workArea;
+  let x = petBounds.x + petBounds.width - BUBBLE_WIDTH - 34;
+  let y = petBounds.y - BUBBLE_HEIGHT + 92;
+  if (y < area.y + 8) y = petBounds.y + 54;
+  x = Math.min(Math.max(x, area.x + 8), area.x + area.width - BUBBLE_WIDTH - 8);
+  y = Math.min(Math.max(y, area.y + 8), area.y + area.height - BUBBLE_HEIGHT - 8);
+  bubbleWindow.setPosition(Math.round(x), Math.round(y), false);
+}
+
+function showSettingsWindow(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.show();
+    settingsWindow.focus();
+    return;
+  }
+  const window = new BrowserWindow({
+    width: 760,
+    height: 780,
+    minWidth: 680,
+    minHeight: 640,
+    backgroundColor: "#17110c",
+    title: "codex-pet AI 设置",
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "settings-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  settingsWindow = window;
+  window.loadFile(path.join(__dirname, "..", "settings.html"));
+  window.once("ready-to-show", () => window.show());
+  window.on("focus", () => assistantController?.setShortcutsSuspended(true));
+  window.on("blur", () => assistantController?.setShortcutsSuspended(false));
+  window.on("closed", () => {
+    assistantController?.setShortcutsSuspended(false);
+    settingsWindow = null;
+  });
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 }
 
 function runtimePath(): string {
@@ -150,12 +252,15 @@ function runtimePath(): string {
   return found;
 }
 
-function startRuntime(): void {
+function startRuntime(proxyUrl: string | null): void {
   try {
+    const environment = { ...process.env };
+    if (proxyUrl) environment.CODEX_PET_PROXY_URL = proxyUrl;
+    else delete environment.CODEX_PET_PROXY_URL;
     runtime = spawn(runtimePath(), [], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
-      env: process.env,
+      env: environment,
     });
   } catch (error) {
     publishError(error);
@@ -166,6 +271,7 @@ function startRuntime(): void {
   lines.on("line", (line) => {
     try {
       const event = normalizeEvent(JSON.parse(line) as RuntimeEvent);
+      if (assistantController?.handleRuntimeEvent(event)) return;
       lastEvent = event;
       if (event.type === "ready") {
         catalog = event.catalog;
@@ -206,12 +312,13 @@ function normalizeEvent(event: RuntimeEvent): RuntimeEvent {
   return event;
 }
 
-function sendCommand(command: PetCommand): void {
+function sendCommand(command: PetCommand): boolean {
   if (!runtime?.stdin.writable) {
     publishError(new Error("Rust sidecar 尚未就绪"));
-    return;
+    return false;
   }
   runtime.stdin.write(`${JSON.stringify(command)}\n`);
+  return true;
 }
 
 function publishError(error: unknown): void {
@@ -277,6 +384,16 @@ function rebuildTrayMenu(): void {
     checked: snapshot?.pet.id === pet.id,
     click: () => sendCommand({ type: "selectPet", petId: pet.id }),
   }));
+  const assistant = assistantController?.settingsView();
+  const actionItems: MenuItemConstructorOptions[] =
+    assistant?.actions.map((action) => {
+      const registration = assistant.shortcutRegistrations.find((value) => value.actionId === action.id);
+      return {
+        label: `${action.name}  [${action.shortcut}]`,
+        enabled: registration?.registered === true,
+        click: () => assistantController?.triggerAction(action.id),
+      };
+    }) ?? [];
   const template: MenuItemConstructorOptions[] = [
     {
       label: petWindow?.isVisible() ? "隐藏桌宠" : "显示桌宠",
@@ -313,6 +430,12 @@ function rebuildTrayMenu(): void {
     { label: "选择宠物", submenu: petItems.length > 0 ? petItems : [{ label: "正在加载", enabled: false }] },
     { type: "separator" },
     {
+      label: "AI 动作",
+      submenu: actionItems.length > 0 ? actionItems : [{ label: "尚未配置", enabled: false }],
+    },
+    { label: "AI 设置…", click: showSettingsWindow },
+    { type: "separator" },
+    {
       label: "退出",
       click: () => app.quit(),
     },
@@ -331,17 +454,49 @@ function registerIpc(): void {
     if (typeof enabled === "boolean") setClickThrough(enabled);
   });
   ipcMain.on("pet:hide", () => petWindow?.hide());
+  ipcMain.on("assistant:bubble:ready", () => assistantController?.bubbleReady());
+  ipcMain.handle("assistant:bubble:copy", () => assistantController?.copyResult());
+  ipcMain.handle("assistant:bubble:retry", () => assistantController?.retry());
+  ipcMain.handle("assistant:bubble:close", () => assistantController?.closeBubble());
+  ipcMain.handle("assistant:settings:get", () => assistantController?.settingsView());
+  ipcMain.handle("assistant:settings:save", (_event, update: AssistantSettingsUpdate) => {
+    if (!assistantController) throw new Error("AI 助手尚未就绪");
+    return assistantController.saveSettings(update);
+  });
+  ipcMain.handle("assistant:settings:test", async () => {
+    if (!assistantController) throw new Error("AI 助手尚未就绪");
+    return assistantController.testConnection();
+  });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false);
   });
   registerIpc();
   petWindow = createWindow();
+  bubbleWindow = createBubbleWindow();
   tray = createTray();
+  const assistantStore = new AssistantStore(app.getPath("userData"));
+  const applicationProxy = new ApplicationProxy();
+  let initialProxyUrl = assistantStore.effectiveProxyUrl(assistantStore.loadSettings());
+  try {
+    await applicationProxy.apply(initialProxyUrl);
+  } catch (error) {
+    await applicationProxy.apply(null);
+    initialProxyUrl = null;
+    publishError(new Error(`无法应用已保存的代理配置：${String(error)}`));
+  }
+  assistantController = new AssistantController({
+    store: assistantStore,
+    proxy: applicationProxy,
+    sendRuntimeCommand: sendCommand,
+    showBubble: showBubbleWindow,
+    hideBubble: hideBubbleWindow,
+    onSettingsChanged: rebuildTrayMenu,
+  });
   rebuildTrayMenu();
-  startRuntime();
+  startRuntime(initialProxyUrl);
 });
 
 app.on("window-all-closed", () => {
@@ -349,6 +504,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  assistantController?.dispose();
   sendCommand({ type: "shutdown" });
   runtime?.kill();
   persistSettings();

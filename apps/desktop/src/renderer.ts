@@ -28,6 +28,8 @@ type RendererRuntimeEvent =
   | { type: "ready"; snapshot: RendererSnapshot | null }
   | { type: "snapshot"; snapshot: RendererSnapshot }
   | { type: "error"; message: string }
+  | { type: "selectionCaptured"; requestId: number; text: string; method: string }
+  | { type: "selectionFailed"; requestId: number; message: string }
   | { type: "bye" };
 
 interface RendererShellState {

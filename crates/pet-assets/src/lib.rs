@@ -41,12 +41,27 @@ pub struct PetSummary {
 #[derive(Debug, Clone)]
 pub struct AssetStore {
     home: PathBuf,
+    proxy_url: Option<String>,
 }
 
 impl AssetStore {
     #[must_use]
     pub fn new(home: PathBuf) -> Self {
-        Self { home }
+        Self {
+            home,
+            proxy_url: None,
+        }
+    }
+
+    pub fn with_proxy(home: PathBuf, proxy_url: Option<String>) -> Result<Self> {
+        let mut store = Self::new(home);
+        store.set_proxy_url(proxy_url)?;
+        Ok(store)
+    }
+
+    pub fn set_proxy_url(&mut self, proxy_url: Option<String>) -> Result<()> {
+        self.proxy_url = proxy_url.map(normalize_proxy_url).transpose()?;
+        Ok(())
     }
 
     #[must_use]
@@ -68,7 +83,11 @@ impl AssetStore {
             return Ok(destination);
         }
 
-        let bytes = download_with_limit(&builtin_url(pet), MAX_DOWNLOAD_BYTES)?;
+        let bytes = download_with_limit(
+            &builtin_url(pet),
+            MAX_DOWNLOAD_BYTES,
+            self.proxy_url.as_deref(),
+        )?;
         let parent = destination.parent().context("内置资源路径没有父目录")?;
         fs::create_dir_all(parent).with_context(|| format!("创建 {}", parent.display()))?;
         let nonce = SystemTime::now()
@@ -146,12 +165,17 @@ fn builtin_url(pet: BuiltinPet) -> String {
     format!("{CDN_BASE_URL}/{}", pet.spritesheet_file)
 }
 
-fn download_with_limit(url: &str, max_bytes: u64) -> Result<Vec<u8>> {
+fn download_with_limit(url: &str, max_bytes: u64, proxy_url: Option<&str>) -> Result<Vec<u8>> {
     if !url.starts_with("https://persistent.oaistatic.com/") {
         bail!("拒绝非官方 HTTPS 宠物资源地址");
     }
-    let mut response = reqwest::blocking::Client::builder()
+    let mut builder = reqwest::blocking::Client::builder()
         .timeout(DOWNLOAD_TIMEOUT)
+        .no_proxy();
+    if let Some(proxy_url) = proxy_url {
+        builder = builder.proxy(reqwest::Proxy::all(proxy_url).context("配置宠物资源下载代理")?);
+    }
+    let mut response = builder
         .build()
         .context("创建宠物资源下载客户端")?
         .get(url)
@@ -175,6 +199,27 @@ fn download_with_limit(url: &str, max_bytes: u64) -> Result<Vec<u8>> {
         bail!("宠物资源超过 {max_bytes} 字节限制");
     }
     Ok(bytes)
+}
+
+fn normalize_proxy_url(value: String) -> Result<String> {
+    let value = if let Some(rest) = value.strip_prefix("socks://") {
+        format!("socks5://{rest}")
+    } else {
+        value
+    };
+    let parsed = reqwest::Url::parse(&value).context("代理地址格式无效")?;
+    if !matches!(parsed.scheme(), "http" | "https" | "socks4" | "socks5") {
+        bail!("代理协议仅支持 HTTP、HTTPS、SOCKS4 或 SOCKS5");
+    }
+    if parsed.host_str().is_none()
+        || (parsed.path() != "/" && !parsed.path().is_empty())
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        bail!("代理地址只能包含协议、账号、主机和端口");
+    }
+    reqwest::Proxy::all(&value).context("代理地址无效")?;
+    Ok(value)
 }
 
 fn validate_builtin_spritesheet(path: &Path) -> Result<()> {

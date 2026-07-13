@@ -1,4 +1,11 @@
-import type { PetCommand, RuntimeEvent, ShellState } from "./types";
+import type {
+  AssistantBubbleEvent,
+  AssistantSettingsUpdate,
+  AssistantSettingsView,
+  PetCommand,
+  RuntimeEvent,
+  ShellState,
+} from "./types";
 
 declare global {
   interface Window {
@@ -10,6 +17,18 @@ declare global {
       hide(): void;
       onEvent(listener: (event: RuntimeEvent) => void): () => void;
       onShellState(listener: (state: ShellState) => void): () => void;
+    };
+    assistantBubble: {
+      ready(): void;
+      copy(): Promise<void>;
+      retry(): Promise<void>;
+      close(): Promise<void>;
+      onEvent(listener: (event: AssistantBubbleEvent) => void): () => void;
+    };
+    assistantSettings: {
+      get(): Promise<AssistantSettingsView>;
+      save(update: AssistantSettingsUpdate): Promise<AssistantSettingsView>;
+      test(): Promise<string>;
     };
   }
 }

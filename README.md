@@ -1,7 +1,8 @@
 # codex-pet
 
 从 Codex 终端宠物中提取的独立桌宠原型，同时提供 Electron 桌面悬浮窗和
-Kitty/Sixel 终端前端。项目不连接 Codex，也不读取 Codex 会话状态。
+Kitty/Sixel 终端前端。项目不读取 Codex 会话状态；桌面端可以按用户配置连接
+OpenAI Chat Completions 兼容服务，处理当前应用中选中的文本。
 
 ## 架构
 
@@ -86,7 +87,16 @@ cargo run -p codex-pet -- terminal --pet codex --protocol auto
 ## 快捷操作
 
 - 桌面端：悬停显示控制条；托盘菜单可选择宠物、切换自动行为、暂停和点击穿透。
+- AI 气泡：在托盘菜单打开“AI 设置”，配置 Base URL、模型、API Key 和 Prompt 动作。
+  每个动作拥有独立全局快捷键；选中文本并按下快捷键后，结果会流式显示在宠物旁边。
+- 前置代理：AI 设置支持全应用 HTTP、HTTPS、SOCKS4 和 SOCKS5 代理；`socks://` 按
+  SOCKS5 处理，`localhost`、`127.0.0.1` 和 `::1` 自动直连。代理 URL 可以携带
+  用户名和密码，密码会从配置地址中移除并使用操作系统安全存储加密。
 - 终端端：`q`/`Esc` 退出，空格暂停，`n` 立即切换行为，`a` 切换自动行为。
+
+API Key 使用操作系统安全存储加密，且不会发送到渲染进程。远程模型地址必须使用
+HTTPS；本机 `localhost` 服务可以使用 HTTP。Windows 会优先通过 UI Automation
+读取选区，失败时临时模拟复制；Linux 使用 Selection Clipboard。
 
 ## 资源声明
 
