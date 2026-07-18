@@ -51,6 +51,26 @@ npm run package:mac
 证书时产物不带签名和公证，首次打开可能需要在 Finder 中右键选择“打开”。推送到
 `main` 后，GitHub Actions 会生成 Apple Silicon (`arm64`) DMG；当前不提供 Intel 版本。
 
+### 绕过 macOS“应用已损坏”提示
+
+当前 DMG 未使用 Apple Developer 证书签名，也未经过 Apple 公证。从浏览器下载后，
+macOS 会为应用添加隔离属性，Gatekeeper 可能因此提示“应用已损坏，无法打开”。这不代表
+DMG 文件本身一定损坏。
+
+请仅对来源可信、且确认由本项目构建的安装包执行以下操作：
+
+1. 将 `codex-pet.app` 从 DMG 拖到“应用程序”目录。
+2. 先在 Finder 中右键点击应用，选择“打开”。
+3. 如果仍提示应用已损坏，在终端中移除该应用的隔离属性，然后重新打开：
+
+```bash
+xattr -dr com.apple.quarantine /Applications/codex-pet.app
+open /Applications/codex-pet.app
+```
+
+以上命令只处理 `/Applications/codex-pet.app`，不要对整个“应用程序”目录或其他下载文件
+批量移除隔离属性。后续版本完成 Developer ID 签名和 Apple 公证后，将不再需要此操作。
+
 ## GitHub Actions 便携版
 
 推送到 `main` 分支时，`.github/workflows/windows-portable.yml` 会在 GitHub 的
