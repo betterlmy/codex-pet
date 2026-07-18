@@ -9,6 +9,7 @@
     "check": "npm --prefix apps/desktop run check",
     "test": "cargo test --workspace && npm --prefix apps/desktop run test",
     "install:desktop": "npm --prefix apps/desktop install && npm --prefix apps/desktop run electron:install",
+    "package:mac": "npm --prefix apps/desktop run package:mac",
     "package:win": "npm --prefix apps/desktop run package:win"
   }
 }

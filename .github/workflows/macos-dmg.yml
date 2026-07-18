@@ -1,0 +1,66 @@
+name: 构建 macOS DMG
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-dmg-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+jobs:
+  build-macos:
+    name: macOS ARM64
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          architecture: arm64
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: 配置 Rust stable
+        run: |
+          rustup update stable
+          rustup default stable
+          rustc --version
+
+      - name: 安装 Electron 依赖
+        run: |
+          npm ci --prefix apps/desktop
+          npm run electron:install --prefix apps/desktop
+
+      - name: 检查项目
+        run: |
+          cargo test --workspace --locked
+          npm run check
+
+      - name: 编译 Rust sidecar
+        run: cargo build --release --locked -p pet-runtime
+
+      - name: 打包 DMG
+        run: npm run package:mac
+
+      - name: 上传 DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: codex-pet-macos-arm64
+          path: artifacts/codex-pet-macos-arm64-*.dmg
+          if-no-files-found: error
+          retention-days: 30
+          archive: false

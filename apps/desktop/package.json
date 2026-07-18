@@ -11,6 +11,7 @@
     "check": "tsc --noEmit",
     "test": "npm run build && node --test dist/*_tests.js",
     "electron:install": "node node_modules/electron/install.js",
+    "package:mac": "npm run build && electron-builder --mac dmg --arm64",
     "package:win": "npm run build && electron-builder --win portable --x64",
     "start": "npm run build && electron .",
     "dev": "npm run start"

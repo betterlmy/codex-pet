@@ -18,19 +18,34 @@ files:
   - settings.css
   - package.json
 
-extraResources:
-  - from: ../../target/release/codex-pet-runtime.exe
-    to: bin/codex-pet-runtime.exe
-  - from: ../../LICENSE
-    to: LICENSE
-  - from: ../../NOTICE.md
-    to: NOTICE.md
-
-artifactName: codex-pet-portable-x64-${version}.${ext}
+mac:
+  icon: build/icon.svg
+  category: public.app-category.utilities
+  identity: null
+  artifactName: codex-pet-macos-${arch}-${version}.${ext}
+  extraResources:
+    - from: ../../target/release/codex-pet-runtime
+      to: bin/codex-pet-runtime
+    - from: ../../LICENSE
+      to: LICENSE
+    - from: ../../NOTICE.md
+      to: NOTICE.md
+  target:
+    - target: dmg
+      arch:
+        - arm64
 
 win:
   icon: build/icon.svg
   signExecutable: false
+  artifactName: codex-pet-portable-x64-${version}.${ext}
+  extraResources:
+    - from: ../../target/release/codex-pet-runtime.exe
+      to: bin/codex-pet-runtime.exe
+    - from: ../../LICENSE
+      to: LICENSE
+    - from: ../../NOTICE.md
+      to: NOTICE.md
   target:
     - target: portable
       arch:

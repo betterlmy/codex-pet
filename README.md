@@ -29,6 +29,28 @@ npm run desktop
 下载平台运行时，因此不要用普通的 `npm install --prefix apps/desktop` 替代
 `npm run install:desktop`。
 
+## macOS 本地开发与打包
+
+在 Apple Silicon Mac 上执行：
+
+```bash
+cargo build --workspace
+npm run install:desktop
+npm run build
+CODEX_PET_RUNTIME="$PWD/target/debug/codex-pet-runtime" npm run desktop
+```
+
+生成 Apple Silicon ARM64 DMG：
+
+```bash
+cargo build --release --locked -p pet-runtime
+npm run package:mac
+```
+
+生成的 `codex-pet-macos-arm64-<版本>.dmg` 位于 `artifacts/`。未配置 Apple Developer
+证书时产物不带签名和公证，首次打开可能需要在 Finder 中右键选择“打开”。推送到
+`main` 后，GitHub Actions 会生成 Apple Silicon (`arm64`) DMG；当前不提供 Intel 版本。
+
 ## GitHub Actions 便携版
 
 推送到 `main` 分支时，`.github/workflows/windows-portable.yml` 会在 GitHub 的
