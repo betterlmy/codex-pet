@@ -3,6 +3,7 @@ use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
+use std::time::Instant;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -11,7 +12,10 @@ use pet_assets::PetSummary;
 use pet_core::BehaviorController;
 use pet_core::BehaviorMode;
 use pet_core::BehaviorState;
+use pet_core::DISABLED_PET_ID;
 use pet_core::Pet;
+use pet_core::PetNotification;
+use pet_core::PetNotificationKind;
 use pet_core::RuntimeConfig;
 use pet_core::app_home;
 use serde::Deserialize;
@@ -27,13 +31,33 @@ mod selection;
 )]
 enum ClientCommand {
     Hello,
-    SelectPet { pet_id: String },
-    SetBehaviorMode { mode: BehaviorMode },
-    SetState { state: BehaviorState },
-    SetPaused { paused: bool },
+    SelectPet {
+        pet_id: String,
+    },
+    SetBehaviorMode {
+        mode: BehaviorMode,
+    },
+    SetState {
+        state: BehaviorState,
+    },
+    SetPaused {
+        paused: bool,
+    },
     Advance,
-    CaptureSelection { request_id: u64 },
-    SetProxy { proxy_url: Option<String> },
+    CaptureSelection {
+        request_id: u64,
+    },
+    PreviewPet {
+        request_id: u64,
+        pet_id: String,
+    },
+    SetProxy {
+        proxy_url: Option<String>,
+    },
+    SetPetNotification {
+        kind: Option<PetNotificationKind>,
+        body: Option<String>,
+    },
     Shutdown,
 }
 
@@ -67,6 +91,14 @@ enum ServerEvent<'a> {
         request_id: u64,
         message: String,
     },
+    PetPreview {
+        request_id: u64,
+        pet: &'a Pet,
+    },
+    PetPreviewFailed {
+        request_id: u64,
+        message: String,
+    },
     Bye,
 }
 
@@ -80,6 +112,9 @@ struct RuntimeSnapshot<'a> {
     state_label: &'static str,
     animation: &'static str,
     paused: bool,
+    notification_kind: Option<PetNotificationKind>,
+    notification_body: Option<&'a str>,
+    enabled: bool,
 }
 
 struct Runtime {
@@ -90,6 +125,7 @@ struct Runtime {
     pet: Option<Pet>,
     catalog: Vec<PetSummary>,
     revision: u64,
+    notification: Option<PetNotification>,
 }
 
 impl Runtime {
@@ -109,6 +145,7 @@ impl Runtime {
             pet,
             catalog,
             revision: 1,
+            notification: None,
         })
     }
 
@@ -126,14 +163,24 @@ impl Runtime {
     }
 
     fn snapshot(&self) -> Option<RuntimeSnapshot<'_>> {
+        let notification = self.notification.as_ref();
         Some(RuntimeSnapshot {
             revision: self.revision,
             pet: self.pet.as_ref()?,
             behavior_mode: self.behavior.mode(),
             state: self.behavior.state(),
-            state_label: self.behavior.state().label(),
-            animation: self.behavior.state().animation_name(),
+            state_label: notification.map_or_else(
+                || self.behavior.state().label(),
+                |value| value.kind().label(),
+            ),
+            animation: notification.map_or_else(
+                || self.behavior.state().animation_name(),
+                |value| value.kind().animation_name(),
+            ),
             paused: self.behavior.paused(),
+            notification_kind: notification.map(PetNotification::kind),
+            notification_body: notification.map(PetNotification::body),
+            enabled: self.config.pet_enabled,
         })
     }
 
@@ -141,9 +188,16 @@ impl Runtime {
         match command {
             ClientCommand::Hello => Ok(HandleResult::Ready),
             ClientCommand::SelectPet { pet_id } => {
+                if pet_id == DISABLED_PET_ID {
+                    self.config.pet_enabled = false;
+                    self.persist()?;
+                    self.bump();
+                    return Ok(HandleResult::Snapshot);
+                }
                 let pet = self.store.load_pet(&pet_id)?;
                 self.pet = Some(pet);
                 self.config.selected_pet = pet_id;
+                self.config.pet_enabled = true;
                 self.persist()?;
                 self.bump();
                 Ok(HandleResult::Snapshot)
@@ -186,15 +240,38 @@ impl Runtime {
                     message: format!("{error:#}"),
                 }),
             },
+            ClientCommand::PreviewPet { request_id, pet_id } => {
+                match self.store.load_pet(&pet_id) {
+                    Ok(pet) => Ok(HandleResult::PetPreview { request_id, pet }),
+                    Err(error) => Ok(HandleResult::PetPreviewFailed {
+                        request_id,
+                        message: format!("{error:#}"),
+                    }),
+                }
+            }
             ClientCommand::SetProxy { proxy_url } => {
                 self.store.set_proxy_url(proxy_url)?;
                 Ok(HandleResult::None)
+            }
+            ClientCommand::SetPetNotification { kind, body } => {
+                self.notification = kind.map(|kind| PetNotification::new(kind, body));
+                self.bump();
+                Ok(HandleResult::Snapshot)
             }
             ClientCommand::Shutdown => Ok(HandleResult::Shutdown),
         }
     }
 
     fn tick(&mut self) -> bool {
+        if self
+            .notification
+            .as_ref()
+            .is_some_and(|notification| notification.is_expired(Instant::now()))
+        {
+            self.notification = None;
+            self.bump();
+            return true;
+        }
         if self.behavior.advance_if_due() {
             self.bump();
             return true;
@@ -220,6 +297,14 @@ enum HandleResult {
         capture: selection::SelectionCapture,
     },
     SelectionFailed {
+        request_id: u64,
+        message: String,
+    },
+    PetPreview {
+        request_id: u64,
+        pet: Pet,
+    },
+    PetPreviewFailed {
         request_id: u64,
         message: String,
     },
@@ -270,6 +355,19 @@ fn run() -> Result<()> {
                     request_id,
                     message,
                 }) => emit(&ServerEvent::SelectionFailed {
+                    request_id,
+                    message,
+                })?,
+                Ok(HandleResult::PetPreview { request_id, pet }) => {
+                    emit(&ServerEvent::PetPreview {
+                        request_id,
+                        pet: &pet,
+                    })?
+                }
+                Ok(HandleResult::PetPreviewFailed {
+                    request_id,
+                    message,
+                }) => emit(&ServerEvent::PetPreviewFailed {
                     request_id,
                     message,
                 })?,

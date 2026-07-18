@@ -16,6 +16,7 @@ pub struct RuntimeConfig {
     pub selected_pet: String,
     pub behavior_mode: BehaviorMode,
     pub paused: bool,
+    pub pet_enabled: bool,
 }
 
 impl Default for RuntimeConfig {
@@ -24,6 +25,7 @@ impl Default for RuntimeConfig {
             selected_pet: DEFAULT_PET_ID.to_string(),
             behavior_mode: BehaviorMode::Automatic,
             paused: false,
+            pet_enabled: true,
         }
     }
 }

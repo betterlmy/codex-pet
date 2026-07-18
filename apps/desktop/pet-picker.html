@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>选择桌面宠物</title>
+    <link rel="stylesheet" href="pet-picker.css" />
+  </head>
+  <body>
+    <main>
+      <aside>
+        <header><p>CODEX PET</p><h1>选择宠物</h1></header>
+        <div id="pet-list" aria-label="宠物列表"></div>
+      </aside>
+      <section class="preview">
+        <div id="preview-sprite" aria-label="宠物预览"></div>
+        <h2 id="preview-title">正在加载</h2>
+        <p id="preview-description"></p>
+        <p id="preview-status" role="status"></p>
+        <button id="confirm" type="button" disabled>使用这个宠物</button>
+      </section>
+    </main>
+    <script src="dist/picker.js"></script>
+  </body>
+</html>

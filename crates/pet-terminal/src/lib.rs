@@ -32,12 +32,16 @@ use pet_core::BehaviorMode;
 pub use protocol::ProtocolSelection;
 
 const IMAGE_ID: u32 = 0xC0DE;
+const AMBIENT_COMPOSER_GAP_PX: u16 = 10;
+const TERMINAL_ROW_HEIGHT_PX: u16 = 15;
 
 #[derive(Debug, Clone)]
 pub struct TerminalOptions {
     pub pet: String,
     pub protocol: ProtocolSelection,
     pub height_px: u16,
+    /// 将宠物锚定在终端内容区右下方，复用 Codex TUI 的 ambient 布局语义。
+    pub ambient: bool,
 }
 
 pub fn run(store: &AssetStore, options: &TerminalOptions) -> Result<()> {
@@ -74,8 +78,13 @@ pub fn run(store: &AssetStore, options: &TerminalOptions) -> Result<()> {
             let image_rows = (options.height_px / 15).max(1);
             let aspect = f64::from(pet.frame_height) / f64::from(pet.frame_width) * 0.52;
             let image_columns = (f64::from(image_rows) / aspect).round().max(1.0) as u16;
-            let x = terminal_columns.saturating_sub(image_columns) / 2;
-            let y = terminal_rows.saturating_sub(image_rows) / 2;
+            let (x, y) = image_position(
+                terminal_columns,
+                terminal_rows.saturating_sub(2),
+                image_columns,
+                image_rows,
+                options.ambient,
+            );
             renderer.draw(
                 terminal.writer(),
                 frame,
@@ -135,6 +144,28 @@ pub fn run(store: &AssetStore, options: &TerminalOptions) -> Result<()> {
     Ok(())
 }
 
+fn image_position(
+    area_columns: u16,
+    content_bottom: u16,
+    image_columns: u16,
+    image_rows: u16,
+    ambient: bool,
+) -> (u16, u16) {
+    if !ambient {
+        return (
+            area_columns.saturating_sub(image_columns) / 2,
+            content_bottom.saturating_sub(image_rows) / 2,
+        );
+    }
+    let gap_rows = AMBIENT_COMPOSER_GAP_PX.div_ceil(TERMINAL_ROW_HEIGHT_PX);
+    (
+        area_columns.saturating_sub(image_columns),
+        content_bottom
+            .saturating_sub(gap_rows)
+            .saturating_sub(image_rows),
+    )
+}
+
 fn draw_status(
     writer: &mut std::io::Stdout,
     terminal_rows: u16,
@@ -187,5 +218,20 @@ impl Drop for TerminalSession {
         let _ = self.stdout.execute(Show);
         let _ = self.stdout.execute(LeaveAlternateScreen);
         let _ = disable_raw_mode();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::image_position;
+
+    #[test]
+    fn ambient_layout_anchors_above_bottom_right_content() {
+        assert_eq!(image_position(100, 40, 12, 5, true), (88, 34));
+    }
+
+    #[test]
+    fn centered_layout_remains_available() {
+        assert_eq!(image_position(100, 40, 12, 6, false), (44, 17));
     }
 }

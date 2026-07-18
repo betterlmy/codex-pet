@@ -36,3 +36,25 @@ fn kitty_inline_transmission_contains_geometry_and_payload() {
     assert!(command.contains("cG5n"));
     assert!(command.ends_with("\x1b\\"));
 }
+
+#[test]
+fn iterm_version_parser_matches_upstream_strictness() {
+    assert_eq!(parse_dotted_version(Some("3.6")), Some((3, 6, 0)));
+    assert_eq!(parse_dotted_version(Some("3.6.1")), Some((3, 6, 1)));
+    assert_eq!(parse_dotted_version(Some("3.6.1.2")), None);
+    assert_eq!(parse_dotted_version(Some("3.6-beta")), None);
+}
+
+#[test]
+fn unsupported_reasons_have_actionable_messages() {
+    assert!(
+        PetImageSupport::Unsupported(PetImageUnsupportedReason::Tmux)
+            .unsupported_message()
+            .unwrap()
+            .contains("tmux")
+    );
+    assert_eq!(
+        PetImageSupport::Supported(ImageProtocol::Kitty).protocol(),
+        Some(ImageProtocol::Kitty)
+    );
+}

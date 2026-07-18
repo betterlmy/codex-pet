@@ -122,15 +122,21 @@ cargo build --release --target x86_64-pc-windows-gnu \
 cargo run -p codex-pet -- terminal --pet codex --protocol auto
 ```
 
+终端宠物默认使用与 Codex ambient pet 一致的右下角锚定布局；如需旧版居中展示，添加
+`--centered`。自动协议检测会对 tmux、Zellij、过旧 iTerm2 和不支持图片的终端给出明确原因。
+
 首次使用内置宠物时会从 Codex CDN 下载 spritesheet。可通过
 `CODEX_PET_HOME` 覆盖数据目录；自定义宠物放在
 `$CODEX_PET_HOME/pets/<pet-id>/pet.json`。
 
 ## 快捷操作
 
-- 桌面端：悬停显示控制条；托盘菜单可选择宠物、切换自动行为、暂停和点击穿透。
+- 桌面端：悬停显示控制条；托盘菜单可打开独立宠物选择窗口、切换自动行为、暂停和点击穿透。
+  选择窗口支持内置宠物、自定义 `pet.json`、旧版 `avatar.json`、异步预览和禁用桌宠。
 - AI 气泡：在托盘菜单打开“AI 设置”，配置 Base URL、模型、API Key 和 Prompt 动作。
   每个动作拥有独立全局快捷键；选中文本并按下快捷键后，结果会流式显示在宠物旁边。
+  请求中、等待输入、完成和失败会映射为 Codex pet 的 `Running`、`Waiting`、`Review`、
+  `Failed` 动画语义；状态动画先播放三轮，再回到 idle 循环。
 - 前置代理：AI 设置支持全应用 HTTP、HTTPS、SOCKS4 和 SOCKS5 代理；`socks://` 按
   SOCKS5 处理，`localhost`、`127.0.0.1` 和 `::1` 自动直连。代理 URL 可以携带
   用户名和密码，密码会从配置地址中移除并使用操作系统安全存储加密。

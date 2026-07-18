@@ -16,6 +16,8 @@ files:
   - bubble.css
   - settings.html
   - settings.css
+  - pet-picker.html
+  - pet-picker.css
   - package.json
 
 mac:

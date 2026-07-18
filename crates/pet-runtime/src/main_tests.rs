@@ -35,3 +35,30 @@ fn set_proxy_command_accepts_authenticated_socks_url() {
             if value == "socks5://user:secret@127.0.0.1:1080"
     ));
 }
+
+#[test]
+fn pet_notification_command_uses_codex_semantic_state() {
+    let command: ClientCommand =
+        serde_json::from_str(r#"{"type":"setPetNotification","kind":"review","body":"Ready"}"#)
+            .unwrap();
+    assert!(matches!(
+        command,
+        ClientCommand::SetPetNotification {
+            kind: Some(PetNotificationKind::Review),
+            body: Some(body),
+        } if body == "Ready"
+    ));
+}
+
+#[test]
+fn preview_pet_command_keeps_request_identity() {
+    let command: ClientCommand =
+        serde_json::from_str(r#"{"type":"previewPet","requestId":17,"petId":"codex"}"#).unwrap();
+    assert!(matches!(
+        command,
+        ClientCommand::PreviewPet {
+            request_id: 17,
+            pet_id,
+        } if pet_id == "codex"
+    ));
+}

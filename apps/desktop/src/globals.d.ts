@@ -3,6 +3,8 @@ import type {
   AssistantSettingsUpdate,
   AssistantSettingsView,
   PetCommand,
+  PetDefinition,
+  PetPickerState,
   RuntimeEvent,
   ShellState,
 } from "./types";
@@ -29,6 +31,11 @@ declare global {
       get(): Promise<AssistantSettingsView>;
       save(update: AssistantSettingsUpdate): Promise<AssistantSettingsView>;
       test(): Promise<string>;
+    };
+    petPicker: {
+      get(): Promise<PetPickerState>;
+      preview(petId: string): Promise<PetDefinition>;
+      select(petId: string): Promise<void>;
     };
   }
 }

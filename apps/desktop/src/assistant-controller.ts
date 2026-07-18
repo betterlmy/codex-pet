@@ -15,6 +15,7 @@ import type {
   AssistantSettingsUpdate,
   AssistantSettingsView,
   PetCommand,
+  PetNotificationKind,
   PromptAction,
   RuntimeEvent,
   SelectionMethod,
@@ -176,6 +177,7 @@ export class AssistantController {
     this.#pendingSelection = { requestId, actionId };
     this.#lastRequest = null;
     this.#publish({ type: "capturing", requestId, actionName: action.name });
+    this.#setPetNotification("running", action.name);
 
     if (process.platform === "linux") {
       queueMicrotask(() => {
@@ -290,6 +292,7 @@ export class AssistantController {
   #selectionFailed(requestId: number, message: string): void {
     if (this.#pendingSelection?.requestId !== requestId) return;
     this.#pendingSelection = null;
+    this.#setPetNotification("failed", message);
     this.#publish({ type: "error", requestId, message });
   }
 
@@ -323,6 +326,7 @@ export class AssistantController {
       actionName: action.name,
       selectionMethod,
     });
+    this.#setPetNotification("running", action.name);
 
     try {
       const result = await streamChatCompletion({
@@ -340,10 +344,13 @@ export class AssistantController {
       if (this.#activeRequest?.requestId !== requestId) return;
       if (action.autoCopy) clipboard.writeText(result);
       this.#lastRequest = { actionId, input, result, selectionMethod };
+      this.#setPetNotification("review", result);
       this.#publish({ type: "complete", requestId, result, autoCopied: action.autoCopy });
     } catch (error) {
       if (this.#activeRequest?.requestId !== requestId) return;
-      this.#publish({ type: "error", requestId, message: errorMessage(error) });
+      const message = errorMessage(error);
+      this.#setPetNotification("failed", message);
+      this.#publish({ type: "error", requestId, message });
     } finally {
       if (this.#activeRequest?.requestId === requestId) {
         clearTimeout(this.#activeRequest.timeout);
@@ -358,6 +365,15 @@ export class AssistantController {
       throw new Error("尚未配置 API Key，请先打开 AI 设置");
     }
     return apiKey;
+  }
+
+  #setPetNotification(kind: PetNotificationKind, body: string): void {
+    const summary = body.trim().replaceAll(/\s+/g, " ").slice(0, 160);
+    this.#sendRuntimeCommand({
+      type: "setPetNotification",
+      kind,
+      body: summary || undefined,
+    });
   }
 
   #publish(event: AssistantBubbleEvent): void {

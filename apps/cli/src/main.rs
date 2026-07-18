@@ -30,6 +30,10 @@ enum Command {
 
         #[arg(long, default_value_t = 144)]
         height_px: u16,
+
+        /// 使用旧版居中布局，而不是 Codex ambient 右下角布局。
+        #[arg(long)]
+        centered: bool,
     },
 
     /// 列出内置和本地自定义宠物。
@@ -57,12 +61,14 @@ fn main() -> Result<()> {
             pet,
             protocol,
             height_px,
+            centered,
         } => pet_terminal::run(
             &store,
             &TerminalOptions {
                 pet,
                 protocol,
                 height_px,
+                ambient: !centered,
             },
         ),
         Command::List => {

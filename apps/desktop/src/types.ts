@@ -1,4 +1,5 @@
 export type BehaviorMode = "automatic" | "manual";
+export type PetNotificationKind = "running" | "waiting" | "review" | "failed";
 export type BehaviorState =
   | "idle"
   | "move-right"
@@ -38,6 +39,12 @@ export interface PetSummary {
   builtin: boolean;
 }
 
+export interface PetPickerState {
+  catalog: PetSummary[];
+  selectedPetId: string | null;
+  enabled: boolean;
+}
+
 export interface RuntimeSnapshot {
   revision: number;
   pet: PetDefinition;
@@ -46,6 +53,9 @@ export interface RuntimeSnapshot {
   stateLabel: string;
   animation: string;
   paused: boolean;
+  notificationKind: PetNotificationKind | null;
+  notificationBody: string | null;
+  enabled: boolean;
 }
 
 export type RuntimeEvent =
@@ -64,6 +74,8 @@ export type RuntimeEvent =
       method: SelectionMethod;
     }
   | { type: "selectionFailed"; requestId: number; message: string }
+  | { type: "petPreview"; requestId: number; pet: PetDefinition }
+  | { type: "petPreviewFailed"; requestId: number; message: string }
   | { type: "bye" };
 
 export type PetCommand =
@@ -74,7 +86,9 @@ export type PetCommand =
   | { type: "setPaused"; paused: boolean }
   | { type: "advance" }
   | { type: "captureSelection"; requestId: number }
+  | { type: "previewPet"; requestId: number; petId: string }
   | { type: "setProxy"; proxyUrl: string | null }
+  | { type: "setPetNotification"; kind: PetNotificationKind | null; body?: string }
   | { type: "shutdown" };
 
 export interface ShellState {

@@ -405,19 +405,19 @@ fn frame_at_elapsed(animation: &Animation, elapsed_ms: u64) -> Option<FrameTick>
 fn default_animations() -> BTreeMap<String, Animation> {
     [
         ("idle", idle_animation()),
-        ("running-right", row_animation(1, 8, 120, 220)),
-        ("running-left", row_animation(2, 8, 120, 220)),
-        ("waving", row_animation(3, 4, 140, 280)),
-        ("jumping", row_animation(4, 5, 140, 280)),
-        ("failed", row_animation(5, 8, 140, 240)),
-        ("waiting", row_animation(6, 6, 150, 260)),
-        ("running", row_animation(7, 6, 120, 220)),
-        ("review", row_animation(8, 6, 150, 280)),
-        ("move_right", row_animation(1, 8, 120, 220)),
-        ("move_left", row_animation(2, 8, 120, 220)),
-        ("wave", row_animation(3, 4, 140, 280)),
-        ("bounce", row_animation(4, 5, 140, 280)),
-        ("sad", row_animation(5, 8, 140, 240)),
+        ("running-right", app_state_animation(1, 8, 120, 220)),
+        ("running-left", app_state_animation(2, 8, 120, 220)),
+        ("waving", app_state_animation(3, 4, 140, 280)),
+        ("jumping", app_state_animation(4, 5, 140, 280)),
+        ("failed", app_state_animation(5, 8, 140, 240)),
+        ("waiting", app_state_animation(6, 6, 150, 260)),
+        ("running", app_state_animation(7, 6, 120, 220)),
+        ("review", app_state_animation(8, 6, 150, 280)),
+        ("move_right", app_state_animation(1, 8, 120, 220)),
+        ("move_left", app_state_animation(2, 8, 120, 220)),
+        ("wave", app_state_animation(3, 4, 140, 280)),
+        ("bounce", app_state_animation(4, 5, 140, 280)),
+        ("sad", app_state_animation(5, 8, 140, 240)),
     ]
     .into_iter()
     .map(|(name, animation)| (name.to_string(), animation))
@@ -438,24 +438,33 @@ fn idle_animation() -> Animation {
     }
 }
 
-fn row_animation(
+fn app_state_animation(
     row: usize,
     frame_count: usize,
     duration_ms: u64,
     final_duration_ms: u64,
 ) -> Animation {
+    let primary_frames = (0..frame_count)
+        .map(|column| AnimationFrame {
+            sprite_index: row * DEFAULT_FRAME_COLUMNS as usize + column,
+            duration_ms: if column + 1 == frame_count {
+                final_duration_ms
+            } else {
+                duration_ms
+            },
+        })
+        .collect::<Vec<_>>();
+    let primary_frame_count = primary_frames.len() * 3;
+    let frames = primary_frames
+        .iter()
+        .chain(primary_frames.iter())
+        .chain(primary_frames.iter())
+        .cloned()
+        .chain(idle_animation().frames)
+        .collect();
     Animation {
-        frames: (0..frame_count)
-            .map(|column| AnimationFrame {
-                sprite_index: row * DEFAULT_FRAME_COLUMNS as usize + column,
-                duration_ms: if column + 1 == frame_count {
-                    final_duration_ms
-                } else {
-                    duration_ms
-                },
-            })
-            .collect(),
-        loop_start: Some(0),
+        frames,
+        loop_start: Some(primary_frame_count),
         fallback: "idle".to_string(),
     }
 }

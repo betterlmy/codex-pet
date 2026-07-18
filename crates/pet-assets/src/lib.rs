@@ -2,6 +2,7 @@
 
 mod frames;
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::Read as _;
 use std::path::Path;
@@ -15,6 +16,7 @@ use anyhow::Result;
 use anyhow::bail;
 use pet_core::BUILTIN_PETS;
 use pet_core::BuiltinPet;
+use pet_core::DISABLED_PET_ID;
 use pet_core::Pet;
 use pet_core::SPRITESHEET_HEIGHT;
 use pet_core::SPRITESHEET_WIDTH;
@@ -137,25 +139,40 @@ impl AssetStore {
                 builtin: true,
             })
             .collect::<Vec<_>>();
-
-        let directory = self.home.join("pets");
-        if let Ok(children) = fs::read_dir(directory) {
+        let mut custom = HashMap::new();
+        for directory in ["avatars", "pets"] {
+            let Ok(children) = fs::read_dir(self.home.join(directory)) else {
+                continue;
+            };
             for child in children.flatten() {
                 let Some(id) = child.file_name().to_str().map(str::to_string) else {
                     continue;
                 };
+                if id == DISABLED_PET_ID || id.starts_with(pet_core::CUSTOM_PET_PREFIX) {
+                    continue;
+                }
                 let selector = custom_pet_selector(&id);
                 let Ok(pet) = Pet::load_custom(&selector, &self.home) else {
                     continue;
                 };
-                pets.push(PetSummary {
-                    id: selector,
-                    display_name: pet.display_name,
-                    description: pet.description,
-                    builtin: false,
-                });
+                custom.insert(
+                    selector.clone(),
+                    PetSummary {
+                        id: selector,
+                        display_name: pet.display_name,
+                        description: pet.description,
+                        builtin: false,
+                    },
+                );
             }
         }
+        pets.extend(custom.into_values());
+        pets.push(PetSummary {
+            id: DISABLED_PET_ID.to_string(),
+            display_name: "禁用桌面宠物".to_string(),
+            description: "隐藏宠物，但保留状态栏入口".to_string(),
+            builtin: false,
+        });
         pets.sort_by(|left, right| left.display_name.cmp(&right.display_name));
         pets
     }

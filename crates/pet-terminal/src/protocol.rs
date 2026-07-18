@@ -21,7 +21,53 @@ use crate::sixel;
 const ESC: &str = "\x1b";
 const ST: &str = "\x1b\\";
 const KITTY_CHUNK_SIZE: usize = 4096;
-const SIXEL_CACHE_VERSION: &str = "v1";
+const SIXEL_CACHE_VERSION: &str = "v2";
+const ITERM2_KITTY_MIN_VERSION: (u64, u64, u64) = (3, 6, 0);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PetImageSupport {
+    Supported(ImageProtocol),
+    Unsupported(PetImageUnsupportedReason),
+}
+
+impl PetImageSupport {
+    #[must_use]
+    pub const fn protocol(self) -> Option<ImageProtocol> {
+        match self {
+            Self::Supported(protocol) => Some(protocol),
+            Self::Unsupported(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn unsupported_message(self) -> Option<&'static str> {
+        match self {
+            Self::Supported(_) => None,
+            Self::Unsupported(reason) => Some(reason.message()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PetImageUnsupportedReason {
+    Tmux,
+    Zellij,
+    Iterm2TooOld,
+    Terminal,
+}
+
+impl PetImageUnsupportedReason {
+    const fn message(self) -> &'static str {
+        match self {
+            Self::Tmux => "tmux 中禁用宠物：终端图像无法可靠限制在单个 pane 内。请在 tmux 外运行。",
+            Self::Zellij => {
+                "Zellij 中禁用宠物：终端图像无法可靠限制在单个 pane 内。请在 Zellij 外运行。"
+            }
+            Self::Iterm2TooOld => "终端宠物需要 iTerm2 3.6 或更高版本。",
+            Self::Terminal => "当前终端没有暴露受支持的 Kitty 或 Sixel 图像协议。",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProtocolSelection {
@@ -37,7 +83,19 @@ impl ProtocolSelection {
             Self::Kitty => Ok(ImageProtocol::Kitty),
             Self::KittyFile => Ok(ImageProtocol::KittyFile),
             Self::Sixel => Ok(ImageProtocol::Sixel),
-            Self::Auto => detect_protocol(),
+            Self::Auto => {
+                let support = detect_pet_image_support();
+                support.protocol().map_or_else(
+                    || {
+                        bail!(
+                            support
+                                .unsupported_message()
+                                .unwrap_or("当前终端不支持宠物图像")
+                        )
+                    },
+                    Ok,
+                )
+            }
         }
     }
 }
@@ -146,54 +204,67 @@ impl TerminalImageRenderer {
     }
 }
 
-fn detect_protocol() -> Result<ImageProtocol> {
+#[must_use]
+pub fn detect_pet_image_support() -> PetImageSupport {
     if env::var_os("TMUX").is_some() || env::var_os("TMUX_PANE").is_some() {
-        bail!("tmux 中禁用自动桌宠协议检测；请在 tmux 外运行或显式指定协议");
+        return PetImageSupport::Unsupported(PetImageUnsupportedReason::Tmux);
     }
-    if env::var_os("ZELLIJ").is_some() || env::var_os("ZELLIJ_SESSION_NAME").is_some() {
-        bail!("Zellij 中禁用终端桌宠，避免图像跨 pane 残留");
+    if env::var_os("ZELLIJ").is_some()
+        || env::var_os("ZELLIJ_SESSION_NAME").is_some()
+        || env::var_os("ZELLIJ_VERSION").is_some()
+    {
+        return PetImageSupport::Unsupported(PetImageUnsupportedReason::Zellij);
     }
     if env::var_os("KITTY_WINDOW_ID").is_some()
         || env::var_os("WEZTERM_EXECUTABLE").is_some()
         || env::var_os("WEZTERM_VERSION").is_some()
     {
-        return Ok(ImageProtocol::Kitty);
+        return PetImageSupport::Supported(ImageProtocol::Kitty);
     }
 
     let term_program = env::var("TERM_PROGRAM")
         .unwrap_or_default()
         .to_ascii_lowercase();
     let term = env::var("TERM").unwrap_or_default().to_ascii_lowercase();
-    if term_program.contains("iterm") && iterm_supports_kitty_file() {
-        return Ok(ImageProtocol::KittyFile);
+    if term_program.contains("iterm") {
+        return if version_is_at_least(
+            env::var("TERM_PROGRAM_VERSION").ok().as_deref(),
+            ITERM2_KITTY_MIN_VERSION,
+        ) {
+            PetImageSupport::Supported(ImageProtocol::KittyFile)
+        } else {
+            PetImageSupport::Unsupported(PetImageUnsupportedReason::Iterm2TooOld)
+        };
     }
     if ["ghostty", "kitty", "wezterm"]
         .iter()
         .any(|name| term_program.contains(name) || term.contains(name))
     {
-        return Ok(ImageProtocol::Kitty);
+        return PetImageSupport::Supported(ImageProtocol::Kitty);
     }
     if env::var_os("WT_SESSION").is_some()
         || ["sixel", "foot", "mlterm"]
             .iter()
             .any(|name| term.contains(name))
     {
-        return Ok(ImageProtocol::Sixel);
+        return PetImageSupport::Supported(ImageProtocol::Sixel);
     }
-    bail!("当前终端未检测到 Kitty 或 Sixel 图像协议支持")
+    PetImageSupport::Unsupported(PetImageUnsupportedReason::Terminal)
 }
 
-fn iterm_supports_kitty_file() -> bool {
-    let version = env::var("TERM_PROGRAM_VERSION").unwrap_or_default();
-    let mut parts = version
-        .split('.')
-        .filter_map(|part| part.parse::<u64>().ok());
-    let parsed = (
-        parts.next().unwrap_or(0),
-        parts.next().unwrap_or(0),
-        parts.next().unwrap_or(0),
-    );
-    parsed >= (3, 6, 0)
+fn version_is_at_least(version: Option<&str>, minimum: (u64, u64, u64)) -> bool {
+    parse_dotted_version(version).is_some_and(|version| version >= minimum)
+}
+
+fn parse_dotted_version(version: Option<&str>) -> Option<(u64, u64, u64)> {
+    let mut parts = version?.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next().unwrap_or("0").parse().ok()?;
+    let patch = parts.next().unwrap_or("0").parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
 }
 
 fn kitty_delete_image(image_id: u32) -> String {

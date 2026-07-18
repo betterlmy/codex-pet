@@ -30,6 +30,8 @@ type RendererRuntimeEvent =
   | { type: "error"; message: string }
   | { type: "selectionCaptured"; requestId: number; text: string; method: string }
   | { type: "selectionFailed"; requestId: number; message: string }
+  | { type: "petPreview"; requestId: number; pet: unknown }
+  | { type: "petPreviewFailed"; requestId: number; message: string }
   | { type: "bye" };
 
 interface RendererShellState {

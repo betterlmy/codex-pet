@@ -21,6 +21,8 @@ import { ApplicationProxy } from "./application-proxy";
 import type {
   AssistantSettingsUpdate,
   PetCommand,
+  PetDefinition,
+  PetPickerState,
   PetSummary,
   RuntimeEvent,
   RuntimeSnapshot,
@@ -31,6 +33,8 @@ const WINDOW_WIDTH = 292;
 const WINDOW_HEIGHT = 344;
 const BUBBLE_WIDTH = 430;
 const BUBBLE_HEIGHT = 318;
+const PICKER_WIDTH = 820;
+const PICKER_HEIGHT = 640;
 
 interface WindowSettings {
   x?: number;
@@ -41,6 +45,7 @@ interface WindowSettings {
 let petWindow: BrowserWindow | null = null;
 let bubbleWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let pickerWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let runtime: ChildProcessWithoutNullStreams | null = null;
 let assistantController: AssistantController | null = null;
@@ -51,6 +56,11 @@ let windowSettings: WindowSettings = { clickThrough: false };
 let saveTimer: NodeJS.Timeout | null = null;
 let previewCaptured = false;
 let shutdownStarted = false;
+let previewSequence = 0;
+const pendingPreviews = new Map<
+  number,
+  { resolve: (pet: PetDefinition) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
+>();
 
 function settingsPath(): string {
   return path.join(app.getPath("userData"), "window-state.json");
@@ -238,6 +248,36 @@ function showSettingsWindow(): void {
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 }
 
+function showPetPickerWindow(): void {
+  if (pickerWindow && !pickerWindow.isDestroyed()) {
+    pickerWindow.show();
+    pickerWindow.focus();
+    return;
+  }
+  const window = new BrowserWindow({
+    width: PICKER_WIDTH,
+    height: PICKER_HEIGHT,
+    minWidth: 700,
+    minHeight: 560,
+    backgroundColor: "#17110c",
+    title: "选择桌面宠物",
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "picker-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  pickerWindow = window;
+  window.loadFile(path.join(__dirname, "..", "pet-picker.html"));
+  window.once("ready-to-show", () => window.show());
+  window.on("closed", () => {
+    pickerWindow = null;
+  });
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+}
+
 function runtimePath(): string {
   const executable = process.platform === "win32" ? "codex-pet-runtime.exe" : "codex-pet-runtime";
   const candidates = [
@@ -272,6 +312,16 @@ function startRuntime(proxyUrl: string | null): void {
   lines.on("line", (line) => {
     try {
       const event = normalizeEvent(JSON.parse(line) as RuntimeEvent);
+      if (event.type === "petPreview" || event.type === "petPreviewFailed") {
+        const pending = pendingPreviews.get(event.requestId);
+        if (pending) {
+          clearTimeout(pending.timer);
+          pendingPreviews.delete(event.requestId);
+          if (event.type === "petPreview") pending.resolve(event.pet);
+          else pending.reject(new Error(event.message));
+        }
+        return;
+      }
       if (assistantController?.handleRuntimeEvent(event)) return;
       lastEvent = event;
       if (event.type === "ready") {
@@ -280,6 +330,8 @@ function startRuntime(proxyUrl: string | null): void {
       } else if (event.type === "snapshot") {
         snapshot = event.snapshot;
       }
+      if (snapshot?.enabled === false) petWindow?.hide();
+      else if (event.type === "snapshot") petWindow?.showInactive();
       petWindow?.webContents.send("pet:event", event);
       rebuildTrayMenu();
     } catch (error) {
@@ -310,6 +362,15 @@ function normalizeEvent(event: RuntimeEvent): RuntimeEvent {
   if (event.type === "snapshot") {
     return { ...event, snapshot: normalizeSnapshot(event.snapshot) };
   }
+  if (event.type === "petPreview") {
+    return {
+      ...event,
+      pet: {
+        ...event.pet,
+        spritesheetPath: pathToFileURL(event.pet.spritesheetPath).href,
+      },
+    };
+  }
   return event;
 }
 
@@ -339,6 +400,11 @@ function cleanupBeforeQuit(): void {
   } catch (error) {
     console.error("无法在退出前释放 AI 助手资源", error);
   }
+  for (const pending of pendingPreviews.values()) {
+    clearTimeout(pending.timer);
+    pending.reject(new Error("应用正在退出"));
+  }
+  pendingPreviews.clear();
   if (runtime?.stdin.writable) {
     runtime.stdin.write(`${JSON.stringify({ type: "shutdown" } satisfies PetCommand)}\n`);
   }
@@ -421,12 +487,6 @@ function createTray(): Tray {
 
 function rebuildTrayMenu(): void {
   if (!tray) return;
-  const petItems: MenuItemConstructorOptions[] = catalog.map((pet) => ({
-    label: pet.displayName,
-    type: "radio",
-    checked: snapshot?.pet.id === pet.id,
-    click: () => sendCommand({ type: "selectPet", petId: pet.id }),
-  }));
   const assistant = assistantController?.settingsView();
   const actionItems: MenuItemConstructorOptions[] =
     assistant?.actions.map((action) => {
@@ -470,7 +530,7 @@ function rebuildTrayMenu(): void {
     },
     { label: "切换下一个行为", click: () => sendCommand({ type: "advance" }) },
     { type: "separator" },
-    { label: "选择宠物", submenu: petItems.length > 0 ? petItems : [{ label: "正在加载", enabled: false }] },
+    { label: "选择宠物…", enabled: catalog.length > 0, click: showPetPickerWindow },
     { type: "separator" },
     {
       label: "AI 动作",
@@ -497,6 +557,17 @@ function registerIpc(): void {
     if (typeof enabled === "boolean") setClickThrough(enabled);
   });
   ipcMain.on("pet:hide", () => petWindow?.hide());
+  ipcMain.handle("pet:picker:get", (): PetPickerState => ({
+    catalog,
+    selectedPetId: snapshot?.pet.id ?? null,
+    enabled: snapshot?.enabled ?? true,
+  }));
+  ipcMain.handle("pet:picker:preview", (_event, petId: string) => previewPet(petId));
+  ipcMain.handle("pet:picker:select", (_event, petId: string) => {
+    assertKnownPet(petId);
+    if (!sendCommand({ type: "selectPet", petId })) throw new Error("桌宠运行时尚未就绪");
+    pickerWindow?.close();
+  });
   ipcMain.on("assistant:bubble:ready", () => assistantController?.bubbleReady());
   ipcMain.handle("assistant:bubble:copy", () => assistantController?.copyResult());
   ipcMain.handle("assistant:bubble:retry", () => assistantController?.retry());
@@ -509,6 +580,28 @@ function registerIpc(): void {
   ipcMain.handle("assistant:settings:test", async () => {
     if (!assistantController) throw new Error("AI 助手尚未就绪");
     return assistantController.testConnection();
+  });
+}
+
+function assertKnownPet(petId: string): void {
+  if (!catalog.some((pet) => pet.id === petId)) throw new Error(`未知宠物：${petId}`);
+}
+
+function previewPet(petId: string): Promise<PetDefinition> {
+  assertKnownPet(petId);
+  if (petId === "disabled") throw new Error("禁用状态没有预览动画");
+  const requestId = ++previewSequence;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingPreviews.delete(requestId);
+      reject(new Error("加载宠物预览超时"));
+    }, 60_000);
+    pendingPreviews.set(requestId, { resolve, reject, timer });
+    if (!sendCommand({ type: "previewPet", requestId, petId })) {
+      clearTimeout(timer);
+      pendingPreviews.delete(requestId);
+      reject(new Error("桌宠运行时尚未就绪"));
+    }
   });
 }
 
