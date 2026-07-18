@@ -22,6 +22,8 @@ mac:
   icon: build/icon.svg
   category: public.app-category.utilities
   identity: null
+  extendInfo:
+    LSUIElement: true
   artifactName: codex-pet-macos-${arch}-${version}.${ext}
   extraResources:
     - from: ../../target/release/codex-pet-runtime

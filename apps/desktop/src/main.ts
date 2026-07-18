@@ -50,6 +50,7 @@ let lastEvent: RuntimeEvent | null = null;
 let windowSettings: WindowSettings = { clickThrough: false };
 let saveTimer: NodeJS.Timeout | null = null;
 let previewCaptured = false;
+let shutdownStarted = false;
 
 function settingsPath(): string {
   return path.join(app.getPath("userData"), "window-state.json");
@@ -321,6 +322,36 @@ function sendCommand(command: PetCommand): boolean {
   return true;
 }
 
+function cleanupBeforeQuit(): void {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  try {
+    persistSettings();
+  } catch (error) {
+    console.error("无法在退出前保存窗口状态", error);
+  }
+  try {
+    assistantController?.dispose();
+  } catch (error) {
+    console.error("无法在退出前释放 AI 助手资源", error);
+  }
+  if (runtime?.stdin.writable) {
+    runtime.stdin.write(`${JSON.stringify({ type: "shutdown" } satisfies PetCommand)}\n`);
+  }
+  runtime?.kill();
+}
+
+function quitApplication(): void {
+  cleanupBeforeQuit();
+  const fallback = setTimeout(() => app.exit(0), 1_500);
+  fallback.unref();
+  app.quit();
+}
+
 function publishError(error: unknown): void {
   const event: RuntimeEvent = {
     type: "error",
@@ -364,9 +395,21 @@ function sendShellState(): void {
 }
 
 function createTray(): Tray {
-  const iconPath = path.join(__dirname, "..", "assets", "tray-icon.svg");
+  const iconName =
+    process.platform === "darwin"
+      ? "trayTemplate.png"
+      : process.platform === "win32"
+        ? "tray.ico"
+        : "tray.png";
+  const iconPath = path.join(__dirname, "..", "assets", iconName);
   const icon = nativeImage.createFromPath(iconPath);
-  const value = new Tray(icon.resize({ width: 18, height: 18 }));
+  if (icon.isEmpty()) {
+    throw new Error(`无法加载托盘图标：${iconPath}`);
+  }
+  if (process.platform === "darwin") {
+    icon.setTemplateImage(true);
+  }
+  const value = new Tray(icon);
   value.setToolTip("codex-pet");
   value.on("click", () => {
     if (petWindow?.isVisible()) petWindow.hide();
@@ -437,7 +480,7 @@ function rebuildTrayMenu(): void {
     { type: "separator" },
     {
       label: "退出",
-      click: () => app.quit(),
+      click: quitApplication,
     },
   ];
   tray.setContextMenu(Menu.buildFromTemplate(template));
@@ -470,6 +513,7 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  app.dock?.hide();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false);
   });
@@ -504,8 +548,5 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  assistantController?.dispose();
-  sendCommand({ type: "shutdown" });
-  runtime?.kill();
-  persistSettings();
+  cleanupBeforeQuit();
 });
