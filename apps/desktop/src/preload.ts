@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld("codexPet", {
   hide(): void {
     ipcRenderer.send("pet:hide");
   },
+  setHovering(hovering: boolean): void {
+    ipcRenderer.send("pet:setHovering", hovering);
+  },
   onEvent(listener: (event: RuntimeEvent) => void): () => void {
     const wrapped = (_event: Electron.IpcRendererEvent, value: RuntimeEvent) => listener(value);
     ipcRenderer.on("pet:event", wrapped);

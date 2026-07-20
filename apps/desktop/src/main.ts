@@ -20,8 +20,15 @@ import { AssistantController } from "./assistant-controller";
 import { AssistantStore } from "./assistant-store";
 import { ApplicationProxy } from "./application-proxy";
 import { formatShortcut } from "./shortcut-display";
+import {
+  applyAppearance,
+  applyClickThrough,
+  normalizeWindowBehavior,
+  type WindowBehaviorSettings,
+} from "./window-behavior";
 import type {
-  AssistantSettingsUpdate,
+  DesktopSettingsUpdate,
+  PetAppearanceSettings,
   PetCommand,
   PetDefinition,
   PetPickerState,
@@ -38,10 +45,9 @@ const BUBBLE_HEIGHT = 318;
 const PICKER_WIDTH = 820;
 const PICKER_HEIGHT = 640;
 
-interface WindowSettings {
+interface WindowSettings extends WindowBehaviorSettings {
   x?: number;
   y?: number;
-  clickThrough: boolean;
 }
 
 let petWindow: BrowserWindow | null = null;
@@ -54,8 +60,10 @@ let assistantController: AssistantController | null = null;
 let catalog: PetSummary[] = [];
 let snapshot: RuntimeSnapshot | null = null;
 let lastEvent: RuntimeEvent | null = null;
-let windowSettings: WindowSettings = { clickThrough: false };
+let windowSettings: WindowSettings = normalizeWindowBehavior({});
 let saveTimer: NodeJS.Timeout | null = null;
+let opacityTimer: NodeJS.Timeout | null = null;
+let petHovered = false;
 let previewCaptured = false;
 let shutdownStarted = false;
 let previewSequence = 0;
@@ -74,10 +82,10 @@ function readSettings(): WindowSettings {
     return {
       x: typeof value.x === "number" ? value.x : undefined,
       y: typeof value.y === "number" ? value.y : undefined,
-      clickThrough: value.clickThrough === true,
+      ...normalizeWindowBehavior(value),
     };
   } catch {
-    return { clickThrough: false };
+    return normalizeWindowBehavior({});
   }
 }
 
@@ -152,7 +160,11 @@ function createWindow(): BrowserWindow {
     positionBubbleWindow();
   });
   window.on("show", sendShellState);
-  window.on("hide", sendShellState);
+  window.on("hide", () => {
+    petHovered = false;
+    animatePetOpacity(1);
+    sendShellState();
+  });
   window.on("closed", () => {
     petWindow = null;
   });
@@ -392,6 +404,10 @@ function cleanupBeforeQuit(): void {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
+  if (opacityTimer) {
+    clearInterval(opacityTimer);
+    opacityTimer = null;
+  }
   try {
     persistSettings();
   } catch (error) {
@@ -447,11 +463,59 @@ function maybeCapturePreview(): void {
 }
 
 function setClickThrough(enabled: boolean): void {
-  windowSettings.clickThrough = enabled;
+  windowSettings = { ...windowSettings, ...applyClickThrough(windowSettings, enabled) };
+  if (enabled) {
+    petHovered = false;
+    animatePetOpacity(1);
+  }
   petWindow?.setIgnoreMouseEvents(enabled, { forward: true });
   schedulePersistSettings();
   sendShellState();
   rebuildTrayMenu();
+}
+
+function appearanceSettings(): PetAppearanceSettings {
+  return {
+    hoverFadeEnabled: windowSettings.hoverFadeEnabled,
+    hoverOpacity: windowSettings.hoverOpacity,
+  };
+}
+
+function setAppearance(appearance: PetAppearanceSettings): void {
+  windowSettings = { ...windowSettings, ...applyAppearance(windowSettings, appearance) };
+  petWindow?.setIgnoreMouseEvents(windowSettings.clickThrough, { forward: true });
+  animatePetOpacity(windowSettings.hoverFadeEnabled && petHovered ? windowSettings.hoverOpacity : 1);
+  schedulePersistSettings();
+  sendShellState();
+  rebuildTrayMenu();
+}
+
+function setPetHovering(hovering: boolean): void {
+  petHovered = hovering;
+  if (!windowSettings.hoverFadeEnabled || windowSettings.clickThrough) return;
+  animatePetOpacity(hovering ? windowSettings.hoverOpacity : 1);
+}
+
+function animatePetOpacity(target: number): void {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  if (opacityTimer) clearInterval(opacityTimer);
+  const start = petWindow.getOpacity();
+  const startedAt = Date.now();
+  const durationMs = 180;
+  opacityTimer = setInterval(() => {
+    if (!petWindow || petWindow.isDestroyed()) {
+      if (opacityTimer) clearInterval(opacityTimer);
+      opacityTimer = null;
+      return;
+    }
+    const progress = Math.min(1, (Date.now() - startedAt) / durationMs);
+    const eased = 1 - (1 - progress) ** 3;
+    petWindow.setOpacity(start + (target - start) * eased);
+    if (progress >= 1) {
+      if (opacityTimer) clearInterval(opacityTimer);
+      opacityTimer = null;
+    }
+  }, 16);
 }
 
 function sendShellState(): void {
@@ -558,6 +622,9 @@ function registerIpc(): void {
   ipcMain.on("pet:setClickThrough", (_event, enabled: boolean) => {
     if (typeof enabled === "boolean") setClickThrough(enabled);
   });
+  ipcMain.on("pet:setHovering", (_event, hovering: boolean) => {
+    if (typeof hovering === "boolean") setPetHovering(hovering);
+  });
   ipcMain.on("pet:hide", () => petWindow?.hide());
   ipcMain.handle("pet:picker:get", (): PetPickerState => ({
     catalog,
@@ -574,10 +641,16 @@ function registerIpc(): void {
   ipcMain.handle("assistant:bubble:copy", () => assistantController?.copyResult());
   ipcMain.handle("assistant:bubble:retry", () => assistantController?.retry());
   ipcMain.handle("assistant:bubble:close", () => assistantController?.closeBubble());
-  ipcMain.handle("assistant:settings:get", () => assistantController?.settingsView());
-  ipcMain.handle("assistant:settings:save", (_event, update: AssistantSettingsUpdate) => {
+  ipcMain.handle("assistant:settings:get", () => {
+    const settings = assistantController?.settingsView();
+    return settings ? { ...settings, appearance: appearanceSettings() } : undefined;
+  });
+  ipcMain.handle("assistant:settings:save", async (_event, update: DesktopSettingsUpdate) => {
     if (!assistantController) throw new Error("AI 助手尚未就绪");
-    return assistantController.saveSettings(update);
+    const appearance = normalizeWindowBehavior(update.appearance);
+    const settings = await assistantController.saveSettings(update);
+    setAppearance(appearance);
+    return { ...settings, appearance: appearanceSettings() };
   });
   ipcMain.handle("assistant:settings:test", async () => {
     if (!assistantController) throw new Error("AI 助手尚未就绪");

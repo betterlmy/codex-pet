@@ -133,6 +133,7 @@ cargo run -p codex-pet -- terminal --pet codex --protocol auto
 
 - 桌面端：悬停显示控制条；托盘菜单可打开独立宠物选择窗口、切换自动行为、暂停和点击穿透。
   选择窗口支持内置宠物、自定义 `pet.json`、旧版 `avatar.json`、异步预览和禁用桌宠。
+  设置中的“鼠标悬停时半隐藏”可配置悬停透明度；该功能与点击穿透互斥。
 - AI 气泡：在托盘菜单打开“AI 设置”，配置 Base URL、模型、API Key 和 Prompt 动作。
   每个动作拥有独立全局快捷键；选中文本并按下快捷键后，结果会流式显示在宠物旁边。
   请求中、等待输入、完成和失败会映射为 Codex pet 的 `Running`、`Waiting`、`Review`、

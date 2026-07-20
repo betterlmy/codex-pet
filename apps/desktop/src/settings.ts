@@ -29,6 +29,12 @@ interface AssistantSettingsView {
   hasProxyPassword: boolean;
   encryptionAvailable: boolean;
   shortcutRegistrations: ShortcutRegistration[];
+  appearance: PetAppearanceSettings;
+}
+
+interface PetAppearanceSettings {
+  hoverFadeEnabled: boolean;
+  hoverOpacity: number;
 }
 
 interface AssistantSettingsUpdate {
@@ -38,6 +44,7 @@ interface AssistantSettingsUpdate {
   actions: PromptAction[];
   apiKey?: string;
   clearApiKey?: boolean;
+  appearance: PetAppearanceSettings;
 }
 
 const baseUrlInput = requiredElement<HTMLInputElement>("base-url");
@@ -55,6 +62,9 @@ const addActionButton = requiredElement<HTMLButtonElement>("add-action");
 const saveButton = requiredElement<HTMLButtonElement>("save-button");
 const testButton = requiredElement<HTMLButtonElement>("test-button");
 const formStatus = requiredElement<HTMLElement>("form-status");
+const hoverFadeEnabledInput = requiredElement<HTMLInputElement>("hover-fade-enabled");
+const hoverOpacityInput = requiredElement<HTMLInputElement>("hover-opacity");
+const hoverOpacityValue = requiredElement<HTMLOutputElement>("hover-opacity-value");
 
 let view: AssistantSettingsView | null = null;
 
@@ -67,6 +77,8 @@ clearApiKeyInput.addEventListener("change", () => {
   if (clearApiKeyInput.checked) apiKeyInput.value = "";
 });
 proxyEnabledInput.addEventListener("change", syncProxyControls);
+hoverFadeEnabledInput.addEventListener("change", syncAppearanceControls);
+hoverOpacityInput.addEventListener("input", syncAppearanceControls);
 
 addActionButton.addEventListener("click", () => {
   const action: PromptAction = {
@@ -127,6 +139,9 @@ async function loadSettings(): Promise<void> {
 }
 
 function render(value: AssistantSettingsView): void {
+  hoverFadeEnabledInput.checked = value.appearance.hoverFadeEnabled;
+  hoverOpacityInput.value = String(Math.round(value.appearance.hoverOpacity * 100));
+  syncAppearanceControls();
   baseUrlInput.value = value.baseUrl;
   modelInput.value = value.model;
   proxyEnabledInput.checked = value.proxy.enabled;
@@ -234,7 +249,18 @@ function collectUpdate(): AssistantSettingsUpdate {
     actions,
     ...(apiKey ? { apiKey } : {}),
     clearApiKey: clearApiKeyInput.checked,
+    appearance: {
+      hoverFadeEnabled: hoverFadeEnabledInput.checked,
+      hoverOpacity: Number(hoverOpacityInput.value) / 100,
+    },
   };
+}
+
+function syncAppearanceControls(): void {
+  const enabled = hoverFadeEnabledInput.checked;
+  hoverOpacityInput.disabled = !enabled;
+  hoverOpacityValue.value = `${hoverOpacityInput.value}%`;
+  hoverOpacityInput.closest<HTMLElement>(".opacity-row")?.setAttribute("data-disabled", String(!enabled));
 }
 
 function syncProxyControls(): void {

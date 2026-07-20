@@ -96,6 +96,11 @@ export interface ShellState {
   visible: boolean;
 }
 
+export interface PetAppearanceSettings {
+  hoverFadeEnabled: boolean;
+  hoverOpacity: number;
+}
+
 export type SelectionMethod = "uiAutomation" | "clipboardCopy" | "primarySelection";
 
 export interface PromptAction {
@@ -140,6 +145,14 @@ export interface AssistantSettingsUpdate {
   actions: PromptAction[];
   apiKey?: string;
   clearApiKey?: boolean;
+}
+
+export interface DesktopSettingsView extends AssistantSettingsView {
+  appearance: PetAppearanceSettings;
+}
+
+export interface DesktopSettingsUpdate extends AssistantSettingsUpdate {
+  appearance: PetAppearanceSettings;
 }
 
 export type AssistantBubbleEvent =

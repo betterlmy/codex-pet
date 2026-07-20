@@ -59,6 +59,8 @@ window.codexPet.onShellState((state) => {
   shellState = state;
   passButton.dataset.active = String(state.clickThrough);
 });
+window.addEventListener("mouseenter", () => window.codexPet.setHovering(true));
+window.addEventListener("mouseleave", () => window.codexPet.setHovering(false));
 
 modeButton.addEventListener("click", () => {
   const nextMode: BehaviorMode = snapshot?.behaviorMode === "automatic" ? "manual" : "automatic";

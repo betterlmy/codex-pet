@@ -1,7 +1,7 @@
 import type {
   AssistantBubbleEvent,
-  AssistantSettingsUpdate,
-  AssistantSettingsView,
+  DesktopSettingsUpdate,
+  DesktopSettingsView,
   PetCommand,
   PetDefinition,
   PetPickerState,
@@ -17,6 +17,7 @@ declare global {
       command(command: PetCommand): void;
       setClickThrough(enabled: boolean): void;
       hide(): void;
+      setHovering(hovering: boolean): void;
       onEvent(listener: (event: RuntimeEvent) => void): () => void;
       onShellState(listener: (state: ShellState) => void): () => void;
     };
@@ -29,8 +30,8 @@ declare global {
     };
     assistantSettings: {
       formatShortcut(accelerator: string): string;
-      get(): Promise<AssistantSettingsView>;
-      save(update: AssistantSettingsUpdate): Promise<AssistantSettingsView>;
+      get(): Promise<DesktopSettingsView>;
+      save(update: DesktopSettingsUpdate): Promise<DesktopSettingsView>;
       test(): Promise<string>;
     };
     petPicker: {

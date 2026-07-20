@@ -17,6 +17,32 @@
         <p>连接模型，并为常用操作设置全局快捷键。</p>
       </header>
 
+      <section class="settings-group" aria-labelledby="appearance-title">
+        <div class="group-heading">
+          <h2 id="appearance-title">桌宠外观</h2>
+          <p>减少宠物遮挡当前操作内容。</p>
+        </div>
+        <div class="group-body appearance-body">
+          <label class="switch-row">
+            <span>
+              <strong>鼠标悬停时半隐藏</strong>
+              <small>开启后将自动关闭点击穿透，两项功能不能同时使用。</small>
+            </span>
+            <input id="hover-fade-enabled" type="checkbox" role="switch" />
+          </label>
+          <label class="opacity-row" for="hover-opacity">
+            <span>
+              <strong>悬停透明度</strong>
+              <small>鼠标移开后会自动恢复完全显示。</small>
+            </span>
+            <span class="range-control">
+              <input id="hover-opacity" type="range" min="10" max="90" step="5" value="35" />
+              <output id="hover-opacity-value" for="hover-opacity">35%</output>
+            </span>
+          </label>
+        </div>
+      </section>
+
       <section class="settings-group" aria-labelledby="connection-title">
         <div class="group-heading">
           <h2 id="connection-title">模型连接</h2>
