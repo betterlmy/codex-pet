@@ -8,6 +8,7 @@ import {
 import { AssistantStore } from "./assistant-store";
 import { ApplicationProxy } from "./application-proxy";
 import { streamChatCompletion } from "./openai-client";
+import { formatShortcut } from "./shortcut-display";
 import { parseProxyUrl } from "./proxy-config";
 import type {
   AssistantBubbleEvent,
@@ -261,13 +262,13 @@ export class AssistantController {
           : {
               actionId: action.id,
               registered: false,
-              error: `快捷键 ${action.shortcut} 已被系统或其他应用占用`,
+              error: `快捷键 ${formatShortcut(action.shortcut, process.platform)} 已被系统或其他应用占用`,
             };
       } catch {
         return {
           actionId: action.id,
           registered: false,
-          error: `快捷键格式无效：${action.shortcut}`,
+          error: `快捷键格式无效：${formatShortcut(action.shortcut, process.platform)}`,
         };
       }
     });

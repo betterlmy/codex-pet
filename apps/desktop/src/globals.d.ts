@@ -28,6 +28,7 @@ declare global {
       onEvent(listener: (event: AssistantBubbleEvent) => void): () => void;
     };
     assistantSettings: {
+      formatShortcut(accelerator: string): string;
       get(): Promise<AssistantSettingsView>;
       save(update: AssistantSettingsUpdate): Promise<AssistantSettingsView>;
       test(): Promise<string>;

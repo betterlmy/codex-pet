@@ -5,6 +5,7 @@ import {
   Menu,
   MenuItemConstructorOptions,
   nativeImage,
+  nativeTheme,
   screen,
   session,
   Tray,
@@ -18,6 +19,7 @@ import { pathToFileURL } from "node:url";
 import { AssistantController } from "./assistant-controller";
 import { AssistantStore } from "./assistant-store";
 import { ApplicationProxy } from "./application-proxy";
+import { formatShortcut } from "./shortcut-display";
 import type {
   AssistantSettingsUpdate,
   PetCommand,
@@ -222,12 +224,12 @@ function showSettingsWindow(): void {
     return;
   }
   const window = new BrowserWindow({
-    width: 760,
-    height: 780,
-    minWidth: 680,
-    minHeight: 640,
-    backgroundColor: "#17110c",
-    title: "codex-pet AI 设置",
+    width: 700,
+    height: 720,
+    minWidth: 620,
+    minHeight: 560,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#202023" : "#f5f5f7",
+    title: "codex-pet 设置",
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "settings-preload.js"),
@@ -492,7 +494,7 @@ function rebuildTrayMenu(): void {
     assistant?.actions.map((action) => {
       const registration = assistant.shortcutRegistrations.find((value) => value.actionId === action.id);
       return {
-        label: `${action.name}  [${action.shortcut}]`,
+        label: `${action.name}  [${formatShortcut(action.shortcut, process.platform)}]`,
         enabled: registration?.registered === true,
         click: () => assistantController?.triggerAction(action.id),
       };

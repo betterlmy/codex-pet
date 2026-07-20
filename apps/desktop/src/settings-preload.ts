@@ -1,8 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+import { formatShortcut } from "./shortcut-display";
 import type { AssistantSettingsUpdate, AssistantSettingsView } from "./types";
 
 contextBridge.exposeInMainWorld("assistantSettings", {
+  formatShortcut(accelerator: string): string {
+    return formatShortcut(accelerator, process.platform);
+  },
   get(): Promise<AssistantSettingsView> {
     return ipcRenderer.invoke("assistant:settings:get");
   },

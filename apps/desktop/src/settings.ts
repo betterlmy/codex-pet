@@ -45,7 +45,7 @@ const modelInput = requiredElement<HTMLInputElement>("model");
 const apiKeyInput = requiredElement<HTMLInputElement>("api-key");
 const clearApiKeyInput = requiredElement<HTMLInputElement>("clear-api-key");
 const secretState = requiredElement<HTMLElement>("secret-state");
-const proxyConfig = requiredElement<HTMLElement>("proxy-config");
+const proxyConfig = requiredElement<HTMLDetailsElement>("proxy-config");
 const proxyEnabledInput = requiredElement<HTMLInputElement>("proxy-enabled");
 const proxyUrlInput = requiredElement<HTMLInputElement>("proxy-url");
 const proxySecretState = requiredElement<HTMLElement>("proxy-secret-state");
@@ -79,6 +79,11 @@ addActionButton.addEventListener("click", () => {
   };
   appendAction(action, null, actionList.children.length);
   syncDeleteButtons();
+  const card = actionList.lastElementChild as HTMLElement | null;
+  if (card) {
+    setActionExpanded(card, true);
+    requiredDescendant<HTMLInputElement>(card, ".action-name").focus();
+  }
 });
 
 saveButton.addEventListener("click", async () => {
@@ -125,6 +130,7 @@ function render(value: AssistantSettingsView): void {
   baseUrlInput.value = value.baseUrl;
   modelInput.value = value.model;
   proxyEnabledInput.checked = value.proxy.enabled;
+  proxyConfig.open = value.proxy.enabled;
   proxyUrlInput.value = value.proxy.url;
   syncProxyControls();
   apiKeyInput.disabled = !value.encryptionAvailable;
@@ -159,9 +165,25 @@ function appendAction(
   const card = requiredDescendant<HTMLElement>(fragment, ".action-card");
   card.dataset.actionId = action.id;
   requiredDescendant<HTMLElement>(card, ".action-index").textContent = String(index + 1).padStart(2, "0");
-  requiredDescendant<HTMLInputElement>(card, ".action-name").value = action.name;
+  const name = requiredDescendant<HTMLInputElement>(card, ".action-name");
+  const summaryName = requiredDescendant<HTMLElement>(card, ".action-summary-name");
+  name.value = action.name;
+  summaryName.textContent = action.name;
+  name.addEventListener("input", () => {
+    summaryName.textContent = name.value.trim() || "未命名动作";
+  });
+  const toggle = requiredDescendant<HTMLButtonElement>(card, ".action-toggle");
+  const body = requiredDescendant<HTMLElement>(card, ".action-body");
+  const bodyId = `action-body-${action.id.replaceAll(/[^a-zA-Z0-9_-]/g, "-")}`;
+  body.id = bodyId;
+  toggle.setAttribute("aria-controls", bodyId);
+  toggle.addEventListener("click", () => {
+    setActionExpanded(card, toggle.getAttribute("aria-expanded") !== "true");
+  });
   const shortcut = requiredDescendant<HTMLInputElement>(card, ".action-shortcut");
-  shortcut.value = action.shortcut;
+  const shortcutPreview = requiredDescendant<HTMLElement>(card, ".action-shortcut-preview");
+  setShortcut(shortcut, action.shortcut);
+  shortcutPreview.textContent = window.assistantSettings.formatShortcut(action.shortcut);
   shortcut.addEventListener("keydown", recordShortcut);
   shortcut.addEventListener("focus", () => {
     shortcut.placeholder = "现在按下组合键";
@@ -169,6 +191,8 @@ function appendAction(
   });
   shortcut.addEventListener("blur", () => {
     shortcut.placeholder = "聚焦后按组合键";
+    shortcut.value = window.assistantSettings.formatShortcut(shortcut.dataset.accelerator ?? "");
+    shortcutPreview.textContent = shortcut.value;
   });
   requiredDescendant<HTMLInputElement>(card, ".action-auto-copy").checked = action.autoCopy;
   requiredDescendant<HTMLTextAreaElement>(card, ".action-system-prompt").value = action.systemPrompt;
@@ -196,7 +220,7 @@ function collectUpdate(): AssistantSettingsUpdate {
     name: requiredDescendant<HTMLInputElement>(card, ".action-name").value,
     systemPrompt: requiredDescendant<HTMLTextAreaElement>(card, ".action-system-prompt").value,
     userPrompt: requiredDescendant<HTMLTextAreaElement>(card, ".action-user-prompt").value,
-    shortcut: requiredDescendant<HTMLInputElement>(card, ".action-shortcut").value,
+    shortcut: requiredDescendant<HTMLInputElement>(card, ".action-shortcut").dataset.accelerator ?? "",
     autoCopy: requiredDescendant<HTMLInputElement>(card, ".action-auto-copy").checked,
   }));
   const apiKey = apiKeyInput.value.trim();
@@ -231,11 +255,25 @@ function recordShortcut(event: KeyboardEvent): void {
   event.stopPropagation();
   const input = event.currentTarget as HTMLInputElement;
   if (event.key === "Backspace" || event.key === "Delete") {
-    input.value = "";
+    setShortcut(input, "");
     return;
   }
   const accelerator = acceleratorFromEvent(event);
-  if (accelerator) input.value = accelerator;
+  if (accelerator) setShortcut(input, accelerator);
+}
+
+function setShortcut(input: HTMLInputElement, accelerator: string): void {
+  input.dataset.accelerator = accelerator;
+  input.value = window.assistantSettings.formatShortcut(accelerator);
+  const preview = input.closest(".action-card")?.querySelector<HTMLElement>(".action-shortcut-preview");
+  if (preview) preview.textContent = input.value;
+}
+
+function setActionExpanded(card: HTMLElement, expanded: boolean): void {
+  const toggle = requiredDescendant<HTMLButtonElement>(card, ".action-toggle");
+  const body = requiredDescendant<HTMLElement>(card, ".action-body");
+  toggle.setAttribute("aria-expanded", String(expanded));
+  body.hidden = !expanded;
 }
 
 function acceleratorFromEvent(event: KeyboardEvent): string | null {
@@ -274,7 +312,7 @@ function acceleratorKey(event: KeyboardEvent): string | null {
 function suggestedShortcut(): string {
   const used = new Set(
     Array.from(actionList.querySelectorAll<HTMLInputElement>(".action-shortcut")).map((input) =>
-      input.value.toLowerCase(),
+      (input.dataset.accelerator ?? "").toLowerCase(),
     ),
   );
   for (const key of ["Y", "U", "I", "O", "P", "F9", "F10", "F11", "F12"]) {

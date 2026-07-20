@@ -7,57 +7,60 @@
       content="default-src 'self'; style-src 'self'; script-src 'self'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>codex-pet AI 设置</title>
+    <title>codex-pet 设置</title>
     <link rel="stylesheet" href="settings.css" />
   </head>
   <body>
     <main class="settings-shell">
-      <header class="masthead">
-        <div>
-          <span class="kicker">CODEX-PET / SIGNAL CONFIGURATION</span>
-          <h1>AI 信号设置</h1>
-          <p>为每个 Prompt 动作分配独立快捷键，选中文本后即可直接发送。</p>
-        </div>
-        <span class="masthead-mark" aria-hidden="true">AI</span>
+      <header class="page-header">
+        <h1>AI 设置</h1>
+        <p>连接模型，并为常用操作设置全局快捷键。</p>
       </header>
 
-      <section class="panel connection-panel" aria-labelledby="connection-title">
-        <div class="section-heading">
-          <span>01</span>
-          <div>
-            <h2 id="connection-title">模型连接</h2>
-            <p>兼容 OpenAI Chat Completions 流式协议。</p>
-          </div>
+      <section class="settings-group" aria-labelledby="connection-title">
+        <div class="group-heading">
+          <h2 id="connection-title">模型连接</h2>
+          <p>支持 OpenAI Chat Completions 兼容服务。</p>
         </div>
-        <div class="field-grid">
+        <div class="group-body connection-fields">
           <label class="field field-wide">
-            <span>BASE URL</span>
+            <span>服务地址</span>
             <input id="base-url" type="url" spellcheck="false" autocomplete="off" />
           </label>
           <label class="field">
-            <span>MODEL</span>
+            <span>模型</span>
             <input id="model" type="text" spellcheck="false" autocomplete="off" />
           </label>
           <label class="field">
-            <span>API KEY</span>
+            <span>API Key</span>
             <input id="api-key" type="password" spellcheck="false" autocomplete="new-password" />
           </label>
-        </div>
-        <div class="secret-row">
-          <span id="secret-state">正在检查密钥状态…</span>
-          <label class="check-line"><input id="clear-api-key" type="checkbox" /> 清除已保存密钥</label>
-        </div>
-        <div id="proxy-config" class="proxy-config">
-          <div class="proxy-heading">
-            <div>
-              <span class="proxy-label">FORWARD PROXY</span>
-              <strong>前置代理</strong>
-            </div>
-            <label class="proxy-switch">
-              <input id="proxy-enabled" type="checkbox" />
-              <span>启用全应用代理</span>
+          <div class="field-wide secret-row">
+            <span id="secret-state">正在检查密钥状态…</span>
+            <label class="check-line">
+              <input id="clear-api-key" type="checkbox" />
+              <span>清除已保存密钥</span>
             </label>
           </div>
+        </div>
+      </section>
+
+      <details id="proxy-config" class="settings-group disclosure">
+        <summary>
+          <span class="summary-copy">
+            <strong>网络代理</strong>
+            <small id="proxy-secret-state">代理未启用</small>
+          </span>
+          <span class="chevron" aria-hidden="true"></span>
+        </summary>
+        <div class="group-body proxy-body">
+          <label class="switch-row">
+            <span>
+              <strong>使用代理</strong>
+              <small>模型请求和宠物资源下载使用同一代理</small>
+            </span>
+            <input id="proxy-enabled" type="checkbox" role="switch" />
+          </label>
           <label class="field">
             <span>代理地址</span>
             <input
@@ -67,21 +70,16 @@
               autocomplete="off"
               placeholder="http://127.0.0.1:7890"
             />
-            <small>支持 http://、https://、socks4://、socks5://；socks:// 按 SOCKS5 处理</small>
+            <small>支持 HTTP、HTTPS、SOCKS4 和 SOCKS5；本机地址自动直连。</small>
           </label>
-          <div class="proxy-status-row">
-            <span id="proxy-secret-state">代理未启用</span>
-            <span>本机地址自动直连</span>
-          </div>
         </div>
-      </section>
+      </details>
 
-      <section class="panel actions-panel" aria-labelledby="actions-title">
-        <div class="section-heading actions-heading">
-          <span>02</span>
-          <div>
-            <h2 id="actions-title">Prompt 动作</h2>
-            <p>User Prompt 必须包含 <code>{{input}}</code>，用于放置选中文本。</p>
+      <section class="actions-section" aria-labelledby="actions-title">
+        <div class="actions-heading">
+          <div class="group-heading">
+            <h2 id="actions-title">快捷动作</h2>
+            <p>选中文字后按快捷键即可执行。展开动作可编辑 Prompt。</p>
           </div>
           <button id="add-action" class="secondary-button" type="button">新增动作</button>
         </div>
@@ -89,44 +87,57 @@
       </section>
 
       <footer class="command-bar">
-        <div id="form-status" class="form-status" role="status">尚未加载配置</div>
+        <div id="form-status" class="form-status" role="status" aria-live="polite">尚未加载配置</div>
         <div class="command-buttons">
-          <button id="test-button" class="secondary-button" type="button">测试已保存配置</button>
-          <button id="save-button" class="primary-button" type="button">保存并注册快捷键</button>
+          <button id="test-button" class="secondary-button" type="button">测试连接</button>
+          <button id="save-button" class="primary-button" type="button">保存</button>
         </div>
       </footer>
     </main>
 
     <template id="action-template">
       <article class="action-card">
-        <header class="action-card-header">
+        <button class="action-toggle" type="button" aria-expanded="false">
           <span class="action-index"></span>
-          <label class="field action-name-field">
-            <span>动作名称</span>
-            <input class="action-name" type="text" maxlength="60" />
+          <span class="action-summary">
+            <strong class="action-summary-name"></strong>
+            <small class="shortcut-state"></small>
+          </span>
+          <kbd class="action-shortcut-preview"></kbd>
+          <span class="chevron" aria-hidden="true"></span>
+        </button>
+        <div class="action-body" hidden>
+          <div class="action-fields">
+            <label class="field action-name-field">
+              <span>动作名称</span>
+              <input class="action-name" type="text" maxlength="60" />
+            </label>
+            <label class="field shortcut-field">
+              <span>全局快捷键</span>
+              <input class="action-shortcut" type="text" readonly />
+              <small>聚焦后直接按下新的组合键。</small>
+            </label>
+          </div>
+          <label class="switch-row compact-switch">
+            <span>
+              <strong>自动复制结果</strong>
+              <small>动作完成后写入系统剪贴板</small>
+            </span>
+            <input class="action-auto-copy" type="checkbox" role="switch" />
           </label>
-          <button class="delete-action danger-button" type="button">删除</button>
-        </header>
-        <div class="action-meta">
-          <label class="field shortcut-field">
-            <span>全局快捷键</span>
-            <input class="action-shortcut" type="text" readonly />
-            <small>聚焦后直接按下新的组合键</small>
+          <label class="field prompt-field">
+            <span>System Prompt</span>
+            <textarea class="action-system-prompt" rows="4" maxlength="8000"></textarea>
           </label>
-          <label class="check-card">
-            <input class="action-auto-copy" type="checkbox" />
-            <span>完成后自动复制结果</span>
+          <label class="field prompt-field">
+            <span>User Prompt</span>
+            <textarea class="action-user-prompt" rows="4" maxlength="8000"></textarea>
+            <small>必须包含 <code>{{input}}</code>，用于放置选中的文本。</small>
           </label>
-          <span class="shortcut-state"></span>
+          <div class="action-footer">
+            <button class="delete-action danger-button" type="button">删除动作</button>
+          </div>
         </div>
-        <label class="field prompt-field">
-          <span>SYSTEM PROMPT</span>
-          <textarea class="action-system-prompt" rows="5" maxlength="8000"></textarea>
-        </label>
-        <label class="field prompt-field">
-          <span>USER PROMPT</span>
-          <textarea class="action-user-prompt" rows="4" maxlength="8000"></textarea>
-        </label>
       </article>
     </template>
 
